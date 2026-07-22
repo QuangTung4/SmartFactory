@@ -1,0 +1,121 @@
+import { useEffect, useState } from "react";
+import { NavLink } from "react-router-dom";
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  LayoutDashboard,
+  ScrollText,
+} from "lucide-react";
+import { useLocale } from "@/i18n/LocaleContext";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+
+const STORAGE_KEY = "manager_sidebar_collapsed";
+
+const items = [
+  { to: "/manager", end: true, icon: LayoutDashboard, labelKey: "nav.dashboard" },
+  { to: "/manager/reports", end: false, icon: ClipboardList, labelKey: "nav.reports" },
+  { to: "/manager/incidents", end: false, icon: AlertTriangle, labelKey: "nav.incidents" },
+  {
+    to: "/manager/inspection-log",
+    end: false,
+    icon: ScrollText,
+    labelKey: "nav.inspectionLog",
+  },
+] as const;
+
+type Props = {
+  collapsed: boolean;
+  onToggle: () => void;
+};
+
+export function ManagerSidebar({ collapsed, onToggle }: Props) {
+  const { t } = useLocale();
+
+  return (
+    <aside
+      className={cn(
+        "flex-shrink-0 border-r border-border bg-card flex flex-col transition-[width] duration-200 ease-out",
+        collapsed ? "w-[56px]" : "w-56 md:w-60"
+      )}
+    >
+      <div
+        className={cn(
+          "border-b border-border flex items-center gap-2",
+          collapsed ? "px-1.5 py-2 justify-center" : "px-3 py-2.5 justify-between"
+        )}
+      >
+        {!collapsed && (
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground truncate">
+            {t("nav.menu")}
+          </div>
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 flex-shrink-0"
+          onClick={onToggle}
+          title={collapsed ? t("nav.expand") : t("nav.collapse")}
+          aria-label={collapsed ? t("nav.expand") : t("nav.collapse")}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+      <nav className="flex-1 p-1.5 space-y-1 overflow-y-auto overflow-x-hidden">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              title={t(item.labelKey)}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center rounded-lg text-sm font-medium transition-colors",
+                  collapsed ? "justify-center px-0 py-2.5" : "gap-2.5 px-3 py-2.5",
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )
+              }
+            >
+              <Icon className="h-4 w-4 flex-shrink-0" />
+              {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
+            </NavLink>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+export function useSidebarCollapsed() {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed]);
+
+  return {
+    collapsed,
+    toggle: () => setCollapsed((c) => !c),
+  };
+}

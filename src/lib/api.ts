@@ -1,0 +1,241 @@
+/** Client REST → SmartFactory API (SQL Server) */
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "";
+
+export function apiUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE}${p}`;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(apiUrl(path), {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  return data as T;
+}
+
+export type ApiLoginResult = {
+  userId: number;
+  username: string;
+  userType: "admin" | "tablet";
+  zoneId: number | null;
+  zoneCode: string | null;
+  zoneName: string | null;
+};
+
+export type ApiDayKpis = {
+  sessionDate: string;
+  shiftId: number;
+  shift: string;
+  shiftLabel: string;
+  total: number;
+  ok: number;
+  ng: number;
+  missing: number;
+  pending: number;
+  compliance: number;
+};
+
+export type ApiIncident = {
+  incidentId: number;
+  checkId: number;
+  machineId: number;
+  deviceCode: string;
+  deviceName: string;
+  zoneCode: string;
+  zoneName: string;
+  status: string;
+  reason: string;
+  imageUrl?: string;
+  imageUrls: string[];
+  checkedBy: string | null;
+  checkedAt: string | null;
+  shift: string;
+  sessionDate: string | null;
+  incidentStatus: "pending" | "processing" | "resolved";
+  resolvedAt: string | null;
+};
+
+export type ApiChatMessage = {
+  id: string;
+  text: string;
+  sender: "admin" | "tablet" | "system";
+  senderName: string;
+  createdAt: string | null;
+  translations?: Partial<Record<"vi" | "en" | "ko", string>>;
+};
+
+export type ApiConversation = {
+  conversationId: string;
+  incidentId: string;
+  isActive: boolean;
+  incidentStatus: "pending" | "processing" | "resolved";
+  reason: string;
+  deviceCode: string;
+  deviceName: string;
+  zoneCode: string;
+  zoneName: string;
+  checkedBy: string | null;
+  tabletUsername: string | null;
+  displayName: string;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  messageCount: number;
+};
+
+export type ApiReportMachine = {
+  machineId: number;
+  deviceCode: string;
+  deviceName: string;
+  machineStatus: string | null;
+  zoneId: number;
+  zoneCode: string;
+  zoneName: string;
+  checkId: string | null;
+  checkStatus: string | null;
+  reportStatus: "unchecked" | "missing" | "ng" | "ok";
+  checkedBy: string | null;
+  checkedAt: string | null;
+  incidentId: string | null;
+  incidentStatus: string | null;
+  reason: string | null;
+};
+
+export type ApiReportMachinesResponse = {
+  summary: {
+    total: number;
+    unchecked: number;
+    missing: number;
+    ng: number;
+    ok: number;
+    formOpen: boolean;
+    sessionDate: string;
+    shiftId: number | null;
+    shiftCode: string | null;
+    shiftLabel: string | null;
+    formDeadlineTime: string | null;
+    isToday?: boolean;
+  };
+  machines: ApiReportMachine[];
+};
+
+export type ApiDashboardStats = {
+  from: string;
+  to: string;
+  grain: "day" | "week" | "month";
+  totals: {
+    ok: number;
+    ng: number;
+    missing: number;
+    total: number;
+    compliance: number;
+  };
+  series: Array<{ bucket: string; ok: number; ng: number; missing: number }>;
+  byZone: Array<{
+    zoneCode: string;
+    zoneName: string;
+    ok: number;
+    ng: number;
+    missing: number;
+    total: number;
+  }>;
+  incidentsByStatus: {
+    pending: number;
+    processing: number;
+    resolved: number;
+  };
+};
+
+export type ApiInspectionLogRow = {
+  checkId: string;
+  sessionDate: string;
+  deviceCode: string;
+  deviceName: string;
+  zoneCode: string;
+  zoneName: string;
+  checkStatus: string;
+  checkedBy: string | null;
+  checkedAt: string | null;
+  shiftCode: string;
+  shiftLabel: string;
+  reason: string | null;
+};
+
+export const api = {
+  health: () => request<{ ok: boolean; db?: string }>("/api/health"),
+
+  login: (username: string, password: string) =>
+    request<ApiLoginResult>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  managerKpis: () => request<ApiDayKpis>("/api/manager/kpis"),
+
+  managerIncidents: (date?: string) =>
+    request<ApiIncident[]>(
+      date
+        ? `/api/manager/incidents?date=${encodeURIComponent(date)}`
+        : "/api/manager/incidents"
+    ),
+
+  managerReportMachines: (date?: string) =>
+    request<ApiReportMachinesResponse>(
+      date
+        ? `/api/manager/report-machines?date=${encodeURIComponent(date)}`
+        : "/api/manager/report-machines"
+    ),
+
+  managerDashboardStats: (from: string, to: string, grain: "day" | "week" | "month") =>
+    request<ApiDashboardStats>(
+      `/api/manager/dashboard-stats?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&grain=${encodeURIComponent(grain)}`
+    ),
+
+  managerInspectionLog: (from: string, to: string) =>
+    request<ApiInspectionLogRow[]>(
+      `/api/manager/inspection-log?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    ),
+
+  finalizeShift: () =>
+    request<{ ok: boolean; inserted: number; skipped: boolean; reason?: string }>(
+      "/api/checks/finalize-shift",
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  managerConversations: () => request<ApiConversation[]>("/api/manager/conversations"),
+
+  managerMessages: (incidentId: string | number) =>
+    request<ApiChatMessage[]>(`/api/manager/incidents/${incidentId}/messages`),
+
+  sendManagerMessage: (incidentId: string | number, text: string, userId?: number) =>
+    request<ApiChatMessage>(`/api/manager/incidents/${incidentId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text, userId }),
+    }),
+
+  translateMessage: (messageId: string | number, targetLang: "vi" | "en" | "ko") =>
+    request<{
+      messageId: string;
+      targetLang: string;
+      translatedText: string;
+      text: string;
+      translations: Partial<Record<"vi" | "en" | "ko", string>>;
+    }>(`/api/manager/messages/${messageId}/translate`, {
+      method: "POST",
+      body: JSON.stringify({ targetLang }),
+    }),
+
+  resolveIncident: (incidentId: string | number) =>
+    request<{ ok: boolean }>(`/api/manager/incidents/${incidentId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+};

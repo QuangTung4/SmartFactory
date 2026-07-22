@@ -1,0 +1,107 @@
+BÁO CÁO TIẾN ĐỘ DỰ ÁN (PROJECT PROGRESS REPORT)
+Dự án: Hệ Thống Quản Lý Kiểm Tra Thiết Bị Đầu Ca & Điều Hành Sự Cố Thời Gian Thực (Smart Factory Check & Chat)
+Thời gian cập nhật: Ngày 22 tháng 07 năm 2026
+Môi trường triển khai: Nội bộ nhà máy (Mạng LAN / Self-hosted)
+I. MỤC TIÊU & QUY TRÌNH NGHIỆP VỤ CỐT LÕI
+Hệ thống được thiết kế nhằm tự động hóa quy trình bảo trì dự phòng đầu ca, tối ưu hóa giao tiếp giữa khu vực sản xuất (Hiện trường) và phòng điều hành (Quản lý/Kỹ sư), hỗ trợ đa ngôn ngữ (Việt - Hàn - Anh) cho các nhà máy đa quốc gia.
+1. Luồng vận hành theo ca
+Ca Sáng (08:00 - 18:40): Hệ thống tự động mở Form kiểm tra trên Máy tính bảng (Tablet) từ 07:00 (trước ca 1 tiếng). Hạn chót nộp báo cáo là 08:30.
+Ca Đêm (20:00 - 05:30): Hệ thống tự động mở Form từ 19:00. Hạn chót nộp báo cáo là 20:30.
+2. Cơ chế khóa sổ và xử lý dữ liệu tự động (Sau Deadline 08:30 / 20:30)
+Khóa quyền (Disable): Đúng giờ deadline, hệ thống tự động khóa cổng API, làm mờ Form kiểm tra trên toàn bộ Tablet của công nhân.
+Ghi nhận MISSING: Tất cả các máy móc chưa được kiểm tra sẽ bị hệ thống tự động đánh nhãn trạng thái là MISSING kèm lý do kỷ luật hệ thống.
+Tách biệt dữ liệu:
+Thiết bị bình thường: Lưu lịch sử trạng thái ngắn gọn là OK.
+Thiết bị lỗi: Lưu trạng thái NG, bắt buộc công nhân chụp ảnh hiện trường, nhập lý do hỏng hóc và tự gõ họ tên xác nhận vào form. Hệ thống sẽ tự động kích hoạt một Phiếu sự cố (Task Incident) và mở một Phòng chat điều hành riêng biệt.
+Báo cáo tổng hợp: Toàn bộ dữ liệu tổng hợp (OK, NG, MISSING) được đẩy real-time về tài khoản Quản lý qua Webapp.
+3. Phương thức điều hành từ xa (Chat & AI Translation)
+Quản lý không cần trực tiếp xuống hiện trường, ngồi tại văn phòng xem ảnh lỗi và ra chỉ thị xử lý thông qua hệ thống Chat Room-based thời gian thực. Tích hợp nút AI Translation (Dịch theo yêu cầu) giúp Quản lý người Hàn và Công nhân người Việt hiểu nhau lập tức thông qua mô hình lưu trữ đệm (Glossary/Cache) tối ưu chi phí.
+II. KIẾN TRÚC MÔ HÌNH HỆ THỐNG (ARCHITECTURE)
+Hệ thống tuân thủ nghiêm ngặt mô hình phân tách 3 lớp độc lập để đảm bảo khi ứng dụng lỗi hoặc cập nhật phiên bản (gỡ app cài lại), toàn bộ dữ liệu lịch sử và các cuộc trò chuyện cũ KHÔNG bị mất.
+Webapp Quản lý (PC Browser)
+Android App (Tablet Công nhân)
+▼ REST APIs / WebSockets
+▼ REST APIs / WebSockets
+HỆ THỐNG BACKEND LÕI TRUNG TÂM
+• Framework: Node.js (TypeScript)
+• Real-time: Socket.IO Server
+• Tự động hóa: Node-Cron Triggers
+▼ T-SQL Lệnh tập trung
+CƠ SỞ DỮ LIỆU GỐC
+• Microsoft SQL Server
+III. THIẾT KẾ CƠ SỞ DỮ LIỆU HOÀN THIỆN (12 BẢNG)
+Tài khoản được cấu hình cứng cố định theo thiết bị (tablet1, tablet2,...) và admin, không cho phép đăng ký tự do, không lưu thông tin cá nhân (Email, FullName) để tối ưu bảo mật nhà xưởng.
+STT
+Tên Bảng (Table)
+Các Cột Chính (Fields)
+Mô Tả Nghiệp Vụ & Ràng Buộc
+1. DANH MỤC KHU VỰC & TÀI KHOẢN CẤP CỨNG
+1
+Zones
+ZoneId, ZoneCode, ZoneName
+Danh mục phân xưởng.
+2
+Users
+UserId, Username, PasswordHash, UserType, IsActive
+Tài khoản 'admin' hoặc 'tabletX'.
+3
+UserZoneAssignments
+AssignmentId, UserId, ZoneId
+Gắn cố định vị trí làm việc cho từng Tablet.
+2. THIẾT BỊ MÁY MÓC & KHUNG GIỜ CA LÀM VIỆC
+4
+Machines
+MachineId, MachineCode, MachineName, ZoneId, CurrentStatus
+Lưu mã quét QR máy.
+5
+Shifts
+ShiftId, ShiftCode, ShiftName, WorkStartTime, WorkEndTime, FormOpenTime, FormDeadlineTime
+Cấu hình ca chuẩn.
+6
+ShiftStatus
+LogId, LogDate, ShiftId, IsFormEnabled, LockedAt, ComplianceRate
+Nhật ký đóng/mở form hằng ngày. ComplianceRate là cột CÔNG THỨC TỰ ĐỘNG, SQL Server tự tính % hoàn thành checklist của ca đó.
+3. NGHIỆP VỤ KIỂM TRA ĐẦU CA & GHI NHẬN LỖI
+7
+DailyChecks
+CheckId, CheckDate, ShiftId, MachineId, EmployeeId, CheckedBy, CheckStatus, SubmittedAt
+Lưu kết quả kiểm tra. CheckedBy lưu tên người check gõ tay trực tiếp cùng hàng với thuộc tính kết quả. Ràng buộc CHECK: Bắt buộc có tên nếu trạng thái là OK/NG. Bắt buộc để trống (NULL) nếu hệ thống tự chốt MISSING.
+8
+TaskIncidents
+IncidentId, CheckId, ErrorDescription, IncidentImageUrl, IncidentStatus, ResolvedAt
+Chi tiết máy hỏng.
+4. BỘ ĐÀM CHAT REAL-TIME & AI DỊCH THUẬT
+9
+Conversations
+ConversationId, IncidentId, IsActive
+Mỗi sự cố có 1 phòng chat, khóa khi sửa xong.
+10
+ConversationParticipants
+ParticipationId, ConversationId, UserId
+Quyền tham gia phòng chat.
+11
+Messages
+MessageId, ConversationId, SenderId, MessageText, MessageType, CreatedAt
+Lưu lịch sử tin nhắn dạng NVARCHAR.
+12
+MessageTranslations
+TranslationId, MessageId, TargetLang, TranslatedText, TranslatedAt
+Kho đệm lưu bản dịch AI.
+IV. TIẾN ĐỘ THỰC HIỆN CÁC THÀNH PHẦN MÃ NGUỒN
+1. Backend Core (Node.js + TypeScript + SQL Server) - Đã hoàn thiện Logic Lõi
+Tích hợp thành công kết nối mssql thực thi Transaction an toàn khi nộp phiếu.
+Xây dựng xong cơ chế kiểm tra chéo thời gian: Từ chối các lệnh Insert quá giờ nộp bài để chặn đứng việc công nhân chỉnh sửa giờ trên Tablet.
+Cấu hình thành công 4 mốc Cron Job tự động quét và khóa cổng API lúc 07:00, 08:30, 19:00, 20:30.
+2. Ứng dụng Máy tính bảng (Android Studio + Kotlin) - Đã hoàn thiện Framework Demo
+Tích hợp thành công bộ quét mã QR Code bằng Camera (ZXing).
+Xây dựng xong giao diện Form checklist động (Tự mở ô nhập lý do khi chọn NG).
+Cấu hình cổng Socket.IO kết nối thời gian thực, lắng nghe sự kiện server_shift_gate_trigger để ép giao diện Tablet mờ đi lập tức khi đến giờ deadline.
+3. Giao diện Phòng Điều Hành (Webapp Manager) - Đã hoàn thiện Bản Demo Single-File
+Xây dựng xong trang Dashboard tổng hợp hiển thị 4 thẻ KPI trạng thái máy hằng ngày.
+Thiết kế thành công khung giao diện phân mảnh: Bên trái xem bảng báo cáo lỗi kèm ảnh hiện trường, bên phải là cửa sổ chat trực diện.
+Tích hợp luồng giả lập nút Bấm dịch thuật ngôn ngữ (Dịch theo yêu cầu) và tính năng Quản lý bấm nút [Xác nhận Sửa Xong] để tự động khóa phòng chat, chuyển máy về trạng thái Xanh (OK).
+V. KẾ HOẠCH TRIỂN KHAI TIẾP THEO (NEXT STEPS)
+Để đưa hệ thống vào chạy thử nghiệm (Golive Beta) tại phân xưởng, các công việc cần thực hiện tiếp theo bao gồm:
+Đóng gói Backend Server: Đóng gói toàn bộ mã nguồn Node.js/TypeScript thành Docker Image để dễ dàng cài đặt lên máy chủ vật lý đặt tại phòng IT của nhà máy (chạy mạng LAN).
+Cấu hình API Dịch Thuật thật: Thay thế hàm dịch giả lập bằng API thật của Naver Papago hoặc Google Cloud Translate, cấu hình file từ điển chuyên ngành (Glossary Excel) để dịch chuẩn xác thuật ngữ cơ khí (Ví dụ: 금형 -> Khuôn mẫu).
+Cài đặt Kiosk Mode trên Tablet: Triển khai cấu hình hệ điều hành Android trên máy tính bảng của công nhân, khóa toàn bộ các ứng dụng giải trí khác, đảm bảo Tablet bật lên là chạy duy nhất ứng dụng kiểm tra máy này.
