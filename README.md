@@ -1,5 +1,7 @@
 # SmartFactory
 
+Hệ thống tin học hóa quản lý việc kiểm tra chất lượng thiết bị trước ca làm việc.
+
 Ứng dụng checklist bảo trì đầu ca (tablet + quản lý). UI kế thừa từ `check-main`, database SQL Server **`SmartFactoryDB`** (script nguồn: `E:\ysData\db\factory.sql`).
 
 ## Chạy UI
