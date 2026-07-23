@@ -1,33 +1,79 @@
 import type { AppLocale } from "@/i18n/locales";
 
-/** Ten bo phan theo ma BP1.. */
-export function zoneLabel(zoneCode: string | null | undefined, locale: AppLocale, fallback?: string) {
-  const code = (zoneCode || "").trim().toUpperCase();
-  const m = code.match(/^BP(\d+)$/);
+/** Đồng bộ Web ↔ Android: ưu tiên tên DB (ZoneName/MachineName); chỉ synthesize khi thiếu. */
+
+function localizeZoneName(name: string, locale: AppLocale): string {
+  const m = name.trim().match(/^(?:Bộ phận|Department|부서)\s*(\d+)$/i);
   if (m) {
     const n = m[1];
     if (locale === "en") return `Department ${n}`;
     if (locale === "ko") return `부서 ${n}`;
     return `Bộ phận ${n}`;
   }
-  return fallback || zoneCode || "—";
+  return name;
 }
 
-/** Ten thiet bi theo ma TB1.. */
-export function machineLabel(
-  machineCode: string | null | undefined,
-  locale: AppLocale,
-  fallback?: string
-) {
-  const code = (machineCode || "").trim().toUpperCase();
-  const m = code.match(/^TB(\d+)$/);
+function localizeMachineName(name: string, locale: AppLocale): string {
+  const m = name.trim().match(/^(?:Thiết bị|Device|설비)\s*(\d+)$/i);
   if (m) {
     const n = m[1];
     if (locale === "en") return `Device ${n}`;
     if (locale === "ko") return `설비 ${n}`;
     return `Thiết bị ${n}`;
   }
-  return fallback || machineCode || "—";
+  return name;
+}
+
+function synthesizeZone(code: string, locale: AppLocale): string | null {
+  const m = code.match(/^BP(\d+)$/);
+  if (!m) return null;
+  const n = m[1];
+  if (locale === "en") return `Department ${n}`;
+  if (locale === "ko") return `부서 ${n}`;
+  return `Bộ phận ${n}`;
+}
+
+function synthesizeMachine(code: string, locale: AppLocale): string | null {
+  const m = code.match(/^TB(\d+)$/);
+  if (!m) return null;
+  const n = m[1];
+  if (locale === "en") return `Device ${n}`;
+  if (locale === "ko") return `설비 ${n}`;
+  return `Thiết bị ${n}`;
+}
+
+/** Tên bộ phận — ưu tiên Zones.ZoneName từ API */
+export function zoneLabel(zoneCode: string | null | undefined, locale: AppLocale, fallback?: string) {
+  const code = (zoneCode || "").trim().toUpperCase();
+  const fb = (fallback || "").trim();
+  if (fb) return localizeZoneName(fb, locale);
+  const syn = synthesizeZone(code, locale);
+  if (syn) return syn;
+  return zoneCode || "—";
+}
+
+/** Tên thiết bị — ưu tiên Machines.MachineName từ API */
+export function machineLabel(
+  machineCode: string | null | undefined,
+  locale: AppLocale,
+  fallback?: string
+) {
+  const code = (machineCode || "").trim().toUpperCase();
+  const fb = (fallback || "").trim();
+  if (fb) return localizeMachineName(fb, locale);
+  const syn = synthesizeMachine(code, locale);
+  if (syn) return syn;
+  return machineCode || "—";
+}
+
+/** Tên tablet — đồng bộ Users.Username (tablet1 → Tablet 1) trên Web và Android */
+export function tabletLabel(username: string | null | undefined, fallback?: string): string {
+  const raw = (username || fallback || "").trim();
+  if (!raw) return "Tablet";
+  const m = raw.match(/^tablet(\d+)$/i);
+  if (m) return `Tablet ${m[1]}`;
+  if (/^tablet$/i.test(raw)) return "Tablet";
+  return raw;
 }
 
 /** Ca / shift: DAY|NIGHT hoặc tên VN trong DB */

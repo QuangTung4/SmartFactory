@@ -51,9 +51,13 @@ Mã tham chiếu (không chạy trên web):
 Seed: `database/seed-demo.sql` + `adr_Smart_factory/server` → `npm run seed`  
 API: `http://localhost:3001` — thêm `/api/manager/kpis`, `/api/manager/incidents`, chat, resolve
 
-## Tiếp theo (ưu tiên Quản lý)
+## Tiếp theo (liên kết Web ↔ Android)
 
-1. Gắn web Quản lý → REST API (bỏ localStorage mock)
-2. Socket.IO real-time KPI / chat
-3. API dịch thật (Papago / Google Translate + glossary)
-4. Sau đó: Android app từ prototype `src/tablet/`
+Ưu tiên đã chốt: [`../SmartFactorySma_AdrApp/docs/NEXT-PRIORITIES.md`](../../SmartFactorySma_AdrApp/docs/NEXT-PRIORITIES.md) · Domain: [`../SmartFactorySma_AdrApp/CONTEXT.md`](../../SmartFactorySma_AdrApp/CONTEXT.md)
+
+1. Android incident chat (đóng vòng Check & Chat trên tablet) — **DONE** (REST + `SourceLang`)
+2. Socket.IO **typing** Web ↔ Android — **DONE** (`/socket.io`, room `incident:{id}`)
+3. Socket.IO message push / FormWindow lock + KPI — deferred
+4. Harden API auth (token theo Admin / TabletUser)
+5. Checklist master data (bỏ MockData cứng)
+6. Hygiene: README zones BP1–BP6, CheckDate ca đêm, translation provider

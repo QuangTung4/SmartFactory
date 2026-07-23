@@ -6,7 +6,7 @@ Database SQL Server của dự án **SmartFactory**.
 
 | File | Vai trò |
 |------|---------|
-| `E:\ysData\db\factory.sql` | Script gốc (SSMS export) — **nguồn chân lý** |
+| `D:\YSData\Database\SmartFactoryDB.sql` | Script gốc (SSMS export) — **nguồn chân lý** |
 | `database/SmartFactoryDB.sql` | Bản copy trong repo để deploy/code review |
 
 Tên database trong script: **`SmartFactoryDB`**.
@@ -15,9 +15,9 @@ Tên database trong script: **`SmartFactoryDB`**.
 
 ```sql
 -- Trong SSMS: mở và chạy
-E:\ysData\db\factory.sql
+D:\YSData\Database\SmartFactoryDB.sql
 -- hoặc
-E:\ysData\source\SmartFactory\database\SmartFactoryDB.sql
+D:\YSData\Source\SmartFactory\database\SmartFactoryDB.sql
 ```
 
 Sau đó tạo file `.env` từ `.env.example` với `DB_DATABASE=SmartFactoryDB`.
@@ -26,15 +26,17 @@ Sau đó tạo file `.env` từ `.env.example` với `DB_DATABASE=SmartFactoryDB
 
 | UI / mock | Bảng / cột SmartFactoryDB |
 |-----------|---------------------------|
-| Chọn bộ phận | `Zones` (`ZoneId`, `ZoneCode`, `ZoneName`) |
-| Danh sách máy | `Machines` |
+| Chọn bộ phận | `Zones` (`ZoneId`, `ZoneCode`, `ZoneName`) — **ưu tiên ZoneName** trên Web/Android |
+| Danh sách máy | `Machines` (`MachineCode`, `MachineName`) — **ưu tiên MachineName** |
+| Tablet / chat | `Users.Username` (`tablet1` → hiển thị `Tablet 1`) — Web chat + Android shell; không dùng `CheckedBy` |
 | Ca sáng / đêm + cửa sổ gửi | `Shifts` (`FormOpenTime`, `FormDeadlineTime`, `WorkStartTime`, `WorkEndTime`) |
 | Khóa form sau deadline | `ShiftStatus` (`IsFormEnabled`, `LockedAt`) |
 | Gửi OK / NG / missed | `DailyChecks.CheckStatus` = `OK` / `NG` / `MISSING` |
 | Lý do + ảnh lỗi | `TaskIncidents` (`ErrorDescription`, `IncidentImageUrl`) |
-| Chat chỉ thị | `Conversations`, `Messages`, `MessageTranslations` |
+| Chat chỉ thị | `Conversations`, `Messages` (`SourceLang`), `MessageTranslations` |
 | Tài khoản admin/tablet | `Users` (`UserType`) |
-| Gán tablet theo khu | `UserZoneAssignments` |
+| Gán tablet theo khu | `UserZoneAssignments` (2 BP / tablet) + `UserMachineAssignments` (10 máy / tablet; mỗi máy 1 tablet) |
+| Layout demo | 5 tablet active (`tablet1`–`tablet5`) · 10 bộ phận (`BP1`–`BP10`) · 50 thiết bị (`TB1`–`TB50`) |
 
 ## Seed ca (tham khảo — nếu Shifts chưa có data)
 

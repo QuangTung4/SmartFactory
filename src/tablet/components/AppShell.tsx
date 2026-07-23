@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Button } from "@/components/ui/button";
 import { getSession, logout } from "@/lib/auth-store";
+import { tabletLabel } from "@/i18n/contentLabels";
 import { toast } from "sonner";
 
 interface AppShellProps {
@@ -28,7 +29,7 @@ export const AppShell = ({
   const navigate = useNavigate();
   const online = useOnlineStatus();
   const session = getSession();
-  const displayName = userName || session?.username || "tablet";
+  const displayName = tabletLabel(userName || session?.username);
 
   const handleBack = () => {
     if (onBack) onBack();

@@ -30,6 +30,8 @@ export type ChatMessage = {
   senderName: string;
   text: string;
   createdAt: string;
+  /** Ngôn ngữ lúc soạn tin */
+  sourceLang?: "vi" | "en" | "ko" | null;
   /** bản dịch cache giả lập (MessageTranslations) */
   translations?: Partial<Record<"vi" | "en" | "ko", string>>;
 };

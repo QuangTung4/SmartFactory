@@ -2,7 +2,7 @@
 
 Hệ thống tin học hóa quản lý việc kiểm tra chất lượng thiết bị trước ca làm việc.
 
-Ứng dụng checklist bảo trì đầu ca (tablet + quản lý). UI kế thừa từ `check-main`, database SQL Server **`SmartFactoryDB`** (script nguồn: `E:\ysData\db\factory.sql`).
+Ứng dụng checklist bảo trì đầu ca (tablet + quản lý). UI kế thừa từ `check-main`, database SQL Server **`SmartFactoryDB`** (script nguồn: `D:\YSData\Database\SmartFactoryDB.sql`).
 
 ## Chạy UI
 
@@ -18,7 +18,7 @@ Giả lập giờ cửa sổ gửi: `?mockTime=07:30` / `08:31` / `19:15` / `20:
 
 | Mục | Giá trị |
 |-----|---------|
-| Script gốc | `E:\ysData\db\factory.sql` |
+| Script gốc | `D:\YSData\Database\SmartFactoryDB.sql` |
 | Bản copy trong repo | [`database/SmartFactoryDB.sql`](database/SmartFactoryDB.sql) |
 | Tên DB | `SmartFactoryDB` |
 | Server (mặc định) | `localhost` (MSSQL) |

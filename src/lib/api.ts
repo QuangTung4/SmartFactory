@@ -70,6 +70,8 @@ export type ApiChatMessage = {
   sender: "admin" | "tablet" | "system";
   senderName: string;
   createdAt: string | null;
+  /** Ngôn ngữ lúc soạn tin (vi|en|ko) */
+  sourceLang?: "vi" | "en" | "ko" | null;
   translations?: Partial<Record<"vi" | "en" | "ko", string>>;
 };
 
@@ -125,6 +127,41 @@ export type ApiReportMachinesResponse = {
     isToday?: boolean;
   };
   machines: ApiReportMachine[];
+};
+
+export type ApiReportRangeResponse = {
+  summary: {
+    from: string;
+    to: string;
+    shift: "DAY" | "NIGHT" | null;
+    shiftCode: string | null;
+    shiftLabel: string | null;
+    ok: number;
+    ng: number;
+    missing: number;
+    unchecked: number;
+    total: number;
+    compliance: number;
+    dayCount: number;
+  };
+  byDay: Array<{
+    date: string;
+    ok: number;
+    ng: number;
+    missing: number;
+    unchecked: number;
+    shiftCode: string | null;
+  }>;
+  byZone: Array<{
+    zoneCode: string;
+    zoneName: string;
+    ok: number;
+    ng: number;
+    missing: number;
+    unchecked: number;
+    total: number;
+  }>;
+  days: ApiReportMachinesResponse[];
 };
 
 export type ApiDashboardStats = {
@@ -187,12 +224,21 @@ export const api = {
         : "/api/manager/incidents"
     ),
 
-  managerReportMachines: (date?: string) =>
-    request<ApiReportMachinesResponse>(
-      date
-        ? `/api/manager/report-machines?date=${encodeURIComponent(date)}`
-        : "/api/manager/report-machines"
-    ),
+  managerReportMachines: (date?: string, shift?: "DAY" | "NIGHT") => {
+    const q = new URLSearchParams();
+    if (date) q.set("date", date);
+    if (shift) q.set("shift", shift);
+    const qs = q.toString();
+    return request<ApiReportMachinesResponse>(
+      qs ? `/api/manager/report-machines?${qs}` : "/api/manager/report-machines"
+    );
+  },
+
+  managerReportRange: (from: string, to: string, shift?: "DAY" | "NIGHT") => {
+    const q = new URLSearchParams({ from, to });
+    if (shift) q.set("shift", shift);
+    return request<ApiReportRangeResponse>(`/api/manager/report-range?${q.toString()}`);
+  },
 
   managerDashboardStats: (from: string, to: string, grain: "day" | "week" | "month") =>
     request<ApiDashboardStats>(
@@ -215,10 +261,15 @@ export const api = {
   managerMessages: (incidentId: string | number) =>
     request<ApiChatMessage[]>(`/api/manager/incidents/${incidentId}/messages`),
 
-  sendManagerMessage: (incidentId: string | number, text: string, userId?: number) =>
+  sendManagerMessage: (
+    incidentId: string | number,
+    text: string,
+    userId?: number,
+    sourceLang?: "vi" | "en" | "ko"
+  ) =>
     request<ApiChatMessage>(`/api/manager/incidents/${incidentId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ text, userId }),
+      body: JSON.stringify({ text, userId, sourceLang }),
     }),
 
   translateMessage: (messageId: string | number, targetLang: "vi" | "en" | "ko") =>

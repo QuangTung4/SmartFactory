@@ -1,13 +1,13 @@
 /**
  * Cấu hình kết nối SmartFactoryDB (SQL Server).
- * Schema: E:\ysData\db\factory.sql → database SmartFactoryDB
+ * Schema: D:\YSData\Database\SmartFactoryDB.sql → database SmartFactoryDB
  *
  * Biến môi trường đọc từ .env (xem .env.example).
  * Phần frontend Vite chỉ dùng được VITE_*; kết nối DB thật chạy trên API server.
  */
 
 export const DB_NAME = "SmartFactoryDB";
-export const DB_SCRIPT_SOURCE = String.raw`E:\ysData\db\factory.sql`;
+export const DB_SCRIPT_SOURCE = String.raw`D:\YSData\Database\SmartFactoryDB.sql`;
 
 export type DbConnectionConfig = {
   server: string;

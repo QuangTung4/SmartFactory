@@ -1,17 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  addDays,
-  addMonths,
-  endOfDay,
-  endOfMonth,
-  endOfWeek,
-  endOfYear,
-  format,
-  startOfDay,
-  startOfMonth,
-  startOfWeek,
-  startOfYear,
-} from "date-fns";
+import { addDays, addMonths, format, startOfDay, startOfMonth } from "date-fns";
 import {
   Bar,
   BarChart,
@@ -33,9 +21,16 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api, type ApiDashboardStats } from "@/lib/api";
 import { useLocale } from "@/i18n/LocaleContext";
+import { zoneLabel } from "@/i18n/contentLabels";
 import { DatePickerAside } from "../components/DatePickerAside";
+import {
+  formatPeriodCode,
+  periodRangeHint,
+  rangeForPeriod,
+  type ReportPeriodKind,
+} from "../lib/report-period";
 
-type Period = "day" | "week" | "month" | "year";
+type Period = ReportPeriodKind;
 
 /** Solid colors — clearer on SVG strokes than nested hsl(var(...)) */
 const STATUS_COLORS = {
@@ -44,28 +39,11 @@ const STATUS_COLORS = {
   missing: "#8b95a5",
 };
 
-function rangeForPeriod(period: Period, anchor: Date) {
-  if (period === "day") {
-    return { from: startOfDay(anchor), to: endOfDay(anchor), grain: "day" as const };
-  }
-  if (period === "week") {
-    return {
-      from: startOfWeek(anchor, { weekStartsOn: 1 }),
-      to: endOfWeek(anchor, { weekStartsOn: 1 }),
-      grain: "day" as const,
-    };
-  }
-  if (period === "month") {
-    return {
-      from: startOfMonth(anchor),
-      to: endOfMonth(anchor),
-      grain: "day" as const,
-    };
-  }
+function rangeWithGrain(period: Period, anchor: Date) {
+  const range = rangeForPeriod(period, anchor);
   return {
-    from: startOfYear(anchor),
-    to: endOfYear(anchor),
-    grain: "month" as const,
+    ...range,
+    grain: (period === "year" ? "month" : "day") as "day" | "month",
   };
 }
 
@@ -122,14 +100,19 @@ function padSeries(
 }
 
 export default function DashboardPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [period, setPeriod] = useState<Period>("week");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiOk, setApiOk] = useState(true);
 
-  const range = useMemo(() => rangeForPeriod(period, anchor), [period, anchor]);
+  const range = useMemo(() => rangeWithGrain(period, anchor), [period, anchor]);
+  const periodCode = useMemo(() => formatPeriodCode(period, anchor), [period, anchor]);
+  const rangeHint = useMemo(
+    () => periodRangeHint(range.from, range.to),
+    [range.from, range.to]
+  );
 
   const load = useCallback(async () => {
     try {
@@ -188,6 +171,14 @@ export default function DashboardPage() {
     ];
   }, [stats, t]);
 
+  const byZoneData = useMemo(() => {
+    if (!stats) return [];
+    return stats.byZone.map((z) => ({
+      ...z,
+      zoneLabel: zoneLabel(z.zoneCode, locale, z.zoneName),
+    }));
+  }, [stats, locale]);
+
   const periods: { key: Period; label: string }[] = [
     { key: "day", label: t("dashboard.periodDay") },
     { key: "week", label: t("dashboard.periodWeek") },
@@ -209,7 +200,8 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-xl font-bold text-foreground">{t("dashboard.title")}</h1>
               <p className="text-xs text-muted-foreground mt-1">
-                {format(range.from, "yyyy-MM-dd")} → {format(range.to, "yyyy-MM-dd")}
+                <span className="font-semibold text-foreground">{periodCode}</span>
+                {period !== "day" ? ` · ${rangeHint}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -326,9 +318,9 @@ export default function DashboardPage() {
                     }}
                     className="h-[220px] w-full"
                   >
-                    <BarChart data={stats.byZone}>
+                    <BarChart data={byZoneData}>
                       <CartesianGrid vertical={false} />
-                      <XAxis dataKey="zoneCode" tickLine={false} axisLine={false} />
+                      <XAxis dataKey="zoneLabel" tickLine={false} axisLine={false} />
                       <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="ok" stackId="a" fill={STATUS_COLORS.ok} radius={[0, 0, 0, 0]} />

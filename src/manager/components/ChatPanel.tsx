@@ -42,18 +42,17 @@ export function ChatPanel({
 
   const displayText = (msg: ChatMessage) => {
     const id = String(msg.id);
-    const lang = langByMsg[id] || "vi";
-    if (lang === "vi") return msg.text;
+    // Chỉ hiện bản dịch khi user đã chọn ngôn ngữ trên thiết bị này
+    const lang = langByMsg[id];
+    if (!lang) return msg.text;
     const cached = msg.translations?.[lang];
     if (cached) return cached;
     const local = translateContent(msg.text, lang);
     return local !== msg.text ? local : msg.text;
   };
-
   const pickLang = async (msg: ChatMessage, lang: ChatLang) => {
     const id = String(msg.id);
     setLangByMsg((prev) => ({ ...prev, [id]: lang }));
-    if (lang === "vi") return;
     if (msg.translations?.[lang]) return;
     await onTranslate(msg, lang);
   };
@@ -90,7 +89,7 @@ export function ChatPanel({
             <p className="text-sm text-muted-foreground text-center py-12">{t("chat.empty")}</p>
           )}
           {messages.map((msg) => {
-            const activeLang = langByMsg[String(msg.id)] || "vi";
+            const activeLang = langByMsg[String(msg.id)];
             const busy = translatingId === String(msg.id);
             return (
               <div
@@ -110,7 +109,7 @@ export function ChatPanel({
                     <div className="text-[10px] font-semibold opacity-70 mb-0.5">{msg.senderName}</div>
                   )}
                   <div className="whitespace-pre-wrap leading-relaxed">{displayText(msg)}</div>
-                  {msg.sender !== "system" && activeLang !== "vi" && (
+                  {msg.sender !== "system" && activeLang && (
                     <div className="mt-1.5 text-[10px] opacity-70 uppercase tracking-wide">
                       {activeLang}
                     </div>
@@ -129,7 +128,9 @@ export function ChatPanel({
                           <Languages className="h-3 w-3" />
                           {busy
                             ? t("chat.translating")
-                            : `${t("chat.translate")} · ${activeLang.toUpperCase()}`}
+                            : activeLang
+                              ? `${t("chat.translate")} · ${activeLang.toUpperCase()}`
+                              : t("chat.translate")}
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent

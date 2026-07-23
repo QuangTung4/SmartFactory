@@ -27,15 +27,10 @@ type SeedAccount = AuthUser & { password: string };
 const SEED: SeedAccount[] = [
   { userId: 1, username: "admin", userType: "admin", password: DEMO_PASSWORD },
   { userId: 2, username: "tablet1", userType: "tablet", zoneId: "BP1", zoneName: "Bộ phận 1", password: DEMO_PASSWORD },
-  { userId: 3, username: "tablet2", userType: "tablet", zoneId: "BP1", zoneName: "Bộ phận 1", password: DEMO_PASSWORD },
-  { userId: 4, username: "tablet3", userType: "tablet", zoneId: "BP2", zoneName: "Bộ phận 2", password: DEMO_PASSWORD },
-  { userId: 5, username: "tablet4", userType: "tablet", zoneId: "BP2", zoneName: "Bộ phận 2", password: DEMO_PASSWORD },
-  { userId: 6, username: "tablet5", userType: "tablet", zoneId: "BP3", zoneName: "Bộ phận 3", password: DEMO_PASSWORD },
-  { userId: 7, username: "tablet6", userType: "tablet", zoneId: "BP4", zoneName: "Bộ phận 4", password: DEMO_PASSWORD },
-  { userId: 8, username: "tablet7", userType: "tablet", zoneId: "BP5", zoneName: "Bộ phận 5", password: DEMO_PASSWORD },
-  { userId: 9, username: "tablet8", userType: "tablet", zoneId: "BP6", zoneName: "Bộ phận 6", password: DEMO_PASSWORD },
-  { userId: 10, username: "tablet9", userType: "tablet", zoneId: "BP1", zoneName: "Bộ phận 1", password: DEMO_PASSWORD },
-  { userId: 11, username: "tablet10", userType: "tablet", zoneId: "BP2", zoneName: "Bộ phận 2", password: DEMO_PASSWORD },
+  { userId: 3, username: "tablet2", userType: "tablet", zoneId: "BP3", zoneName: "Bộ phận 3", password: DEMO_PASSWORD },
+  { userId: 4, username: "tablet3", userType: "tablet", zoneId: "BP5", zoneName: "Bộ phận 5", password: DEMO_PASSWORD },
+  { userId: 5, username: "tablet4", userType: "tablet", zoneId: "BP7", zoneName: "Bộ phận 7", password: DEMO_PASSWORD },
+  { userId: 6, username: "tablet5", userType: "tablet", zoneId: "BP9", zoneName: "Bộ phận 9", password: DEMO_PASSWORD },
 ];
 
 export function listSeedUsernames(): { username: string; userType: UserType }[] {

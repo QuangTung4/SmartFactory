@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Languages,
@@ -17,10 +17,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLocale } from "@/i18n/LocaleContext";
-import { machineLabel, translateContent, zoneLabel } from "@/i18n/contentLabels";
+import { machineLabel, tabletLabel, translateContent, zoneLabel } from "@/i18n/contentLabels";
 import { api, type ApiConversation } from "@/lib/api";
 import { getSession } from "@/lib/auth-store";
 import type { ChatMessage } from "@/lib/manager-store";
+import {
+  emitTypingStart,
+  emitTypingStop,
+  getSocket,
+  joinIncidentRoom,
+  leaveIncidentRoom,
+  type TypingPayload,
+} from "@/lib/socket";
 import type { ChatLang } from "./ChatPanel";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +38,24 @@ type Props = {
   onFocusConsumed?: () => void;
   onResolved?: () => void;
 };
+
+type PeerTyping = {
+  userId: number | null;
+  username: string;
+  userType: string;
+};
+
+const TYPING_IDLE_MS = 1500;
+
+function TypingDots() {
+  return (
+    <span className="inline-flex items-center gap-0.5 ml-1" aria-hidden>
+      <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
+      <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
+      <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
+    </span>
+  );
+}
 
 export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }: Props) {
   const { t, locale } = useLocale();
@@ -43,6 +69,46 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   const [translatingId, setTranslatingId] = useState<string | null>(null);
   const [langByMsg, setLangByMsg] = useState<Record<string, ChatLang>>({});
   const [loadingList, setLoadingList] = useState(false);
+  const [peerTyping, setPeerTyping] = useState<PeerTyping | null>(null);
+  const typingIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingActiveRef = useRef(false);
+
+  const typingMeta = useMemo(
+    () => ({
+      userId: session?.userId ?? null,
+      username: session?.username || "",
+      userType: session?.userType || "admin",
+    }),
+    [session?.userId, session?.username, session?.userType]
+  );
+
+  const stopTyping = useCallback(
+    (incidentId: string | null) => {
+      if (typingIdleRef.current) {
+        clearTimeout(typingIdleRef.current);
+        typingIdleRef.current = null;
+      }
+      if (!incidentId || !typingActiveRef.current) {
+        typingActiveRef.current = false;
+        return;
+      }
+      typingActiveRef.current = false;
+      emitTypingStop(incidentId, typingMeta);
+    },
+    [typingMeta]
+  );
+
+  const signalTyping = useCallback(
+    (incidentId: string) => {
+      typingActiveRef.current = true;
+      emitTypingStart(incidentId, typingMeta);
+      if (typingIdleRef.current) clearTimeout(typingIdleRef.current);
+      typingIdleRef.current = setTimeout(() => {
+        stopTyping(incidentId);
+      }, TYPING_IDLE_MS);
+    },
+    [stopTyping, typingMeta]
+  );
 
   const loadConversations = useCallback(async () => {
     setLoadingList(true);
@@ -67,6 +133,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
           sender: m.sender,
           senderName: m.senderName,
           createdAt: m.createdAt || new Date().toISOString(),
+          sourceLang: m.sourceLang,
           translations: m.translations || {},
         }))
       );
@@ -93,12 +160,45 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   useEffect(() => {
     if (!open || !activeIncidentId) {
       setMessages([]);
+      setPeerTyping(null);
       return;
     }
     void loadMessages(activeIncidentId);
+    joinIncidentRoom(activeIncidentId, typingMeta);
+
+    const sock = getSocket();
+    const onTyping = (payload: TypingPayload) => {
+      if (String(payload.incidentId) !== String(activeIncidentId)) return;
+      if (payload.userId != null && session?.userId != null && payload.userId === session.userId) {
+        return;
+      }
+      if (payload.isTyping) {
+        setPeerTyping({
+          userId: payload.userId,
+          username: payload.username || "",
+          userType: payload.userType || "",
+        });
+      } else {
+        setPeerTyping((prev) => {
+          if (!prev) return null;
+          if (payload.userId != null && prev.userId != null && payload.userId !== prev.userId) {
+            return prev;
+          }
+          return null;
+        });
+      }
+    };
+    sock.on("typing", onTyping);
+
     const id = window.setInterval(() => void loadMessages(activeIncidentId), 5000);
-    return () => window.clearInterval(id);
-  }, [open, activeIncidentId, loadMessages]);
+    return () => {
+      window.clearInterval(id);
+      sock.off("typing", onTyping);
+      stopTyping(activeIncidentId);
+      leaveIncidentRoom(activeIncidentId, typingMeta);
+      setPeerTyping(null);
+    };
+  }, [open, activeIncidentId, loadMessages, session?.userId, stopTyping, typingMeta]);
 
   const openCount = useMemo(
     () =>
@@ -134,19 +234,36 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
 
   const chatLocked = active?.incidentStatus === "resolved" || active?.isActive === false;
 
+  useEffect(() => {
+    if (chatLocked) {
+      stopTyping(activeIncidentId);
+      setPeerTyping(null);
+    }
+  }, [chatLocked, activeIncidentId, stopTyping]);
+
   const displayText = (msg: ChatMessage) => {
     const id = String(msg.id);
-    const lang = langByMsg[id] || "vi";
-    if (lang === "vi") return msg.text;
-    return msg.translations?.[lang] || translateContent(msg.text, lang) || msg.text;
+    // Chỉ hiện bản dịch khi user đã chọn ngôn ngữ trên thiết bị này (không auto theo cache server)
+    const lang = langByMsg[id];
+    if (!lang) return msg.text;
+    if (msg.translations?.[lang]) return msg.translations[lang]!;
+    const local = translateContent(msg.text, lang);
+    if (local !== msg.text) return local;
+    return msg.text;
   };
 
   const onSend = async () => {
     if (!activeIncidentId || !draft.trim() || chatLocked) return;
     const text = draft.trim();
     setDraft("");
+    stopTyping(activeIncidentId);
     try {
-      await api.sendManagerMessage(activeIncidentId, text, session?.userId);
+      await api.sendManagerMessage(
+        activeIncidentId,
+        text,
+        session?.userId,
+        locale as "vi" | "en" | "ko"
+      );
       await loadMessages(activeIncidentId);
       await loadConversations();
     } catch (err) {
@@ -155,8 +272,17 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     }
   };
 
+  const onDraftChange = (value: string) => {
+    setDraft(value);
+    if (!activeIncidentId || chatLocked) return;
+    if (!value.trim()) {
+      stopTyping(activeIncidentId);
+      return;
+    }
+    signalTyping(activeIncidentId);
+  };
+
   const onTranslate = async (msg: ChatMessage, lang: ChatLang) => {
-    if (lang === "vi") return;
     const messageId = String(msg.id);
     setLangByMsg((prev) => ({ ...prev, [messageId]: lang }));
     if (msg.translations?.[lang]) return;
@@ -185,7 +311,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
           ? translateContent(msg.text, lang)
           : lang === "en"
             ? `[EN] ${msg.text}`
-            : `[KO] ${msg.text}`;
+            : lang === "ko"
+              ? `[KO] ${msg.text}`
+              : `[VI] ${msg.text}`;
       setMessages((prev) =>
         prev.map((m) =>
           String(m.id) === messageId
@@ -247,12 +375,17 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
             <div className="min-w-0">
               <div className="font-bold text-sm truncate">
                 {active
-                  ? `${active.displayName} · ${active.deviceCode}`
+                  ? `${tabletLabel(active.tabletUsername || active.displayName)} · ${active.deviceCode}`
                   : t("chat.bubbleTitle")}
               </div>
               <div className="text-[11px] opacity-80 truncate">
                 {active
-                  ? machineLabel(active.deviceCode, locale, active.deviceName)
+                  ? [
+                      machineLabel(active.deviceCode, locale, active.deviceName),
+                      active.checkedBy ? `KT: ${active.checkedBy}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
                   : t("chat.openCount", { n: openCount })}
               </div>
             </div>
@@ -305,7 +438,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="font-semibold text-sm text-foreground truncate">
-                            {c.displayName}
+                            {tabletLabel(c.tabletUsername || c.displayName)}
                           </div>
                           <span
                             className={cn(
@@ -346,9 +479,11 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                 <button
                   type="button"
                   onClick={() => {
+                    stopTyping(activeIncidentId);
                     setActiveIncidentId(null);
                     setDraft("");
                     setLangByMsg({});
+                    setPeerTyping(null);
                   }}
                   className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary px-2 py-1 rounded-md"
                 >
@@ -371,7 +506,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                 <div className="space-y-2.5">
                   {messages.map((msg) => {
                     const id = String(msg.id);
-                    const activeLang = langByMsg[id] || "vi";
+                    const activeLang = langByMsg[id];
                     const busy = translatingId === id;
                     return (
                       <div
@@ -411,7 +546,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                                 <Languages className="h-3 w-3" />
                                 {busy
                                   ? t("chat.translating")
-                                  : `${t("chat.translate")} · ${activeLang.toUpperCase()}`}
+                                  : activeLang
+                                    ? `${t("chat.translate")} · ${activeLang.toUpperCase()}`
+                                    : t("chat.translate")}
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align={msg.sender === "admin" ? "end" : "start"}>
@@ -435,6 +572,21 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                       </div>
                     );
                   })}
+
+                  {!chatLocked && peerTyping && (
+                    <div className="flex flex-col items-start">
+                      <div className="max-w-[90%] rounded-2xl rounded-bl-md px-3 py-2 text-sm shadow-card bg-muted/60 border border-border text-muted-foreground">
+                        <div className="text-[10px] font-semibold opacity-70 mb-0.5">
+                          {peerTyping.username || peerTyping.userType || "…"}
+                        </div>
+                        <div className="inline-flex items-center text-xs italic">
+                          {t("chat.typing")}
+                          <TypingDots />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {chatLocked && (
                     <div className="text-center text-[11px] font-medium text-success py-2">
                       {t("chat.locked")}
@@ -447,7 +599,8 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                 <div className="flex gap-1.5">
                   <input
                     value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
+                    onChange={(e) => onDraftChange(e.target.value)}
+                    onBlur={() => stopTyping(activeIncidentId)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && void onSend()}
                     disabled={chatLocked}
                     placeholder={
