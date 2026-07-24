@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useLocale } from "@/i18n/LocaleContext";
 import type { TaskIncidentView } from "@/lib/manager-store";
 import { mapIncident } from "../lib/mappers";
-import { ChatBubbleDock } from "../components/ChatBubbleDock";
+import { SF_INCIDENTS_REFRESH } from "../ManagerLayout";
 import { DatePickerAside } from "../components/DatePickerAside";
 import { IncidentsPanel } from "../components/IncidentsPanel";
 
@@ -16,7 +16,6 @@ export default function IncidentsPage() {
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [incidents, setIncidents] = useState<TaskIncidentView[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [focusChatIncidentId, setFocusChatIncidentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiOk, setApiOk] = useState(true);
 
@@ -62,15 +61,17 @@ export default function IncidentsPage() {
 
   useEffect(() => {
     const fromQuery = searchParams.get("incident");
-    if (fromQuery) {
-      setSelectedId(fromQuery);
-      setFocusChatIncidentId(fromQuery);
-    }
+    if (fromQuery) setSelectedId(fromQuery);
   }, [searchParams]);
+
+  useEffect(() => {
+    const onRefresh = () => void loadCore();
+    window.addEventListener(SF_INCIDENTS_REFRESH, onRefresh);
+    return () => window.removeEventListener(SF_INCIDENTS_REFRESH, onRefresh);
+  }, [loadCore]);
 
   const onSelectIncident = (incidentId: string) => {
     setSelectedId(incidentId);
-    setFocusChatIncidentId(incidentId);
     setSearchParams({ incident: incidentId }, { replace: true });
   };
 
@@ -101,11 +102,6 @@ export default function IncidentsPage() {
             onSelect={setAnchor}
             showTodayLink
             onToday={() => setAnchor(startOfDay(new Date()))}
-          />
-          <ChatBubbleDock
-            focusIncidentId={focusChatIncidentId}
-            onFocusConsumed={() => setFocusChatIncidentId(null)}
-            onResolved={() => void loadCore()}
           />
         </div>
       )}

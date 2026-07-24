@@ -1,23 +1,36 @@
-import { Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { LogOut, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleContext";
 import { toast } from "sonner";
 import { getSession, logout } from "@/lib/auth-store";
+import { ChatBubbleDock } from "./components/ChatBubbleDock";
 import { ManagerSidebar, useSidebarCollapsed } from "./components/ManagerSidebar";
+
+/** Sự kiện để trang Sự cố (và trang khác) reload sau khi resolve từ bubble. */
+export const SF_INCIDENTS_REFRESH = "sf:incidents-refresh";
 
 /**
  * Shell riêng cho Webapp Quản lý — tách biệt hoàn toàn với AppShell (tablet).
+ * ChatBubbleDock gắn ở đây → hiện trên mọi trang manager.
  */
 export default function ManagerLayout() {
   const navigate = useNavigate();
   const session = getSession();
   const { t } = useLocale();
   const { collapsed, toggle } = useSidebarCollapsed();
+  const [searchParams] = useSearchParams();
+  const [focusChatIncidentId, setFocusChatIncidentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("incident");
+    if (fromQuery) setFocusChatIncidentId(fromQuery);
+  }, [searchParams]);
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background relative">
       <header className="flex-shrink-0 border-b border-border bg-primary text-primary-foreground px-4 md:px-6 py-3">
         <div className="flex items-center justify-between gap-4 w-full">
           <div className="flex items-center gap-3 min-w-0">
@@ -55,6 +68,14 @@ export default function ManagerLayout() {
           <Outlet />
         </div>
       </div>
+
+      <ChatBubbleDock
+        focusIncidentId={focusChatIncidentId}
+        onFocusConsumed={() => setFocusChatIncidentId(null)}
+        onResolved={() => {
+          window.dispatchEvent(new Event(SF_INCIDENTS_REFRESH));
+        }}
+      />
     </div>
   );
 }

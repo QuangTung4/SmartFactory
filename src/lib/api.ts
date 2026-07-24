@@ -79,10 +79,13 @@ export type ApiConversation = {
   conversationId: string;
   incidentId: string;
   isActive: boolean;
+  /** Open room: active + not resolved (server sort key). */
+  isOpen?: boolean;
   incidentStatus: "pending" | "processing" | "resolved";
   reason: string;
   deviceCode: string;
   deviceName: string;
+  zoneId?: string | null;
   zoneCode: string;
   zoneName: string;
   checkedBy: string | null;
@@ -90,7 +93,11 @@ export type ApiConversation = {
   displayName: string;
   lastMessage: string | null;
   lastMessageAt: string | null;
+  /** max(lastMessageAt, SubmittedAt) — newest activity / error first */
+  lastActivityAt?: string | null;
   messageCount: number;
+  /** Tin từ người khác chưa đọc (theo userId khi gọi API) */
+  unreadCount?: number;
 };
 
 export type ApiReportMachine = {
@@ -256,7 +263,16 @@ export const api = {
       { method: "POST", body: JSON.stringify({}) }
     ),
 
-  managerConversations: () => request<ApiConversation[]>("/api/manager/conversations"),
+  managerConversations: (userId?: number) => {
+    const q = userId != null ? `?userId=${encodeURIComponent(String(userId))}` : "";
+    return request<ApiConversation[]>(`/api/manager/conversations${q}`);
+  },
+
+  markChatRead: (userId: number, incidentId: string | number) =>
+    request<{ ok: boolean }>("/api/chat/mark-read", {
+      method: "POST",
+      body: JSON.stringify({ userId, incidentId }),
+    }),
 
   managerMessages: (incidentId: string | number) =>
     request<ApiChatMessage[]>(`/api/manager/incidents/${incidentId}/messages`),
@@ -288,5 +304,21 @@ export const api = {
     request<{ ok: boolean }>(`/api/manager/incidents/${incidentId}/resolve`, {
       method: "POST",
       body: JSON.stringify({}),
+    }),
+
+  pushVapidPublicKey: () =>
+    request<{ publicKey: string }>("/api/push/vapid-public-key"),
+
+  registerPush: (body: {
+    userId: number;
+    platform: "web" | "android";
+    token: string;
+    endpoint?: string;
+    p256dh?: string;
+    auth?: string;
+  }) =>
+    request<{ ok: boolean }>("/api/push/register", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 };

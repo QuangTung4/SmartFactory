@@ -26,9 +26,12 @@ import {
   emitTypingStop,
   getSocket,
   joinIncidentRoom,
+  joinManagersRoom,
   leaveIncidentRoom,
+  type ChatMessagePayload,
   type TypingPayload,
 } from "@/lib/socket";
+import { registerWebPush } from "@/lib/web-push";
 import type { ChatLang } from "./ChatPanel";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +48,162 @@ type PeerTyping = {
   userType: string;
 };
 
+type HeadsUp = {
+  id: string;
+  incidentId: string;
+  title: string;
+  body: string;
+};
+
+/** FAB position: left/top in px (after snap: left is near left or right edge). */
+type BubblePos = { left: number; top: number };
+
 const TYPING_IDLE_MS = 1500;
+const BUBBLE_STORAGE_KEY = "sf.chatBubble.pos";
+const FAB_SIZE = 56;
+const FAB_MARGIN = 20;
+const DRAG_THRESHOLD_PX = 8;
+
+function defaultBubblePos(): BubblePos {
+  if (typeof window === "undefined") return { left: FAB_MARGIN, top: FAB_MARGIN };
+  return {
+    left: Math.max(FAB_MARGIN, window.innerWidth - FAB_MARGIN - FAB_SIZE),
+    top: Math.max(FAB_MARGIN, window.innerHeight - FAB_MARGIN - FAB_SIZE),
+  };
+}
+
+function loadBubblePos(): BubblePos {
+  try {
+    const raw = localStorage.getItem(BUBBLE_STORAGE_KEY);
+    if (!raw) return defaultBubblePos();
+    const p = JSON.parse(raw) as { side?: string; bottom?: number; left?: number; top?: number };
+    if (typeof p.left === "number" && typeof p.top === "number") {
+      return clampBubblePos({ left: p.left, top: p.top });
+    }
+    if ((p.side === "left" || p.side === "right") && typeof p.bottom === "number") {
+      const left =
+        p.side === "left"
+          ? FAB_MARGIN
+          : Math.max(FAB_MARGIN, window.innerWidth - FAB_MARGIN - FAB_SIZE);
+      const top = Math.max(
+        FAB_MARGIN,
+        window.innerHeight - p.bottom - FAB_SIZE
+      );
+      return clampBubblePos({ left, top });
+    }
+  } catch {
+    /* ignore */
+  }
+  return defaultBubblePos();
+}
+
+function saveBubblePos(pos: BubblePos) {
+  try {
+    const side = pos.left + FAB_SIZE / 2 < window.innerWidth / 2 ? "left" : "right";
+    const bottom = Math.max(FAB_MARGIN, window.innerHeight - pos.top - FAB_SIZE);
+    localStorage.setItem(
+      BUBBLE_STORAGE_KEY,
+      JSON.stringify({ side, bottom, left: pos.left, top: pos.top })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function clampBubblePos(pos: BubblePos): BubblePos {
+  if (typeof window === "undefined") return pos;
+  const maxLeft = Math.max(FAB_MARGIN, window.innerWidth - FAB_MARGIN - FAB_SIZE);
+  const maxTop = Math.max(FAB_MARGIN, window.innerHeight - FAB_MARGIN - FAB_SIZE);
+  return {
+    left: Math.min(maxLeft, Math.max(FAB_MARGIN, pos.left)),
+    top: Math.min(maxTop, Math.max(FAB_MARGIN, pos.top)),
+  };
+}
+
+function snapBubblePos(pos: BubblePos): BubblePos {
+  const clamped = clampBubblePos(pos);
+  const mid = clamped.left + FAB_SIZE / 2;
+  const left =
+    mid < window.innerWidth / 2
+      ? FAB_MARGIN
+      : Math.max(FAB_MARGIN, window.innerWidth - FAB_MARGIN - FAB_SIZE);
+  return { left, top: clamped.top };
+}
+
+type DockPlacementX = "left" | "right";
+type DockPlacementY = "above" | "below";
+
+type DockAnchor = {
+  x: DockPlacementX;
+  y: DockPlacementY;
+  style: {
+    top?: number;
+    bottom?: number;
+    left?: number | "auto";
+    right?: number | "auto";
+  };
+  /** Corner tip toward FAB */
+  tipClass: string;
+  /** Enter animation matching placement (Radix-style) */
+  enterClass: string;
+};
+
+/**
+ * Neo preview/panel theo trục X/Y + vùng chết mép màn hình.
+ * FAB snap trái → mở sang phải; snap phải → mở sang trái.
+ * Nửa dưới → mở trên; nửa trên → mở dưới.
+ */
+function computeDockAnchor(
+  pos: BubblePos,
+  opts: { gap: number; estWidth: number; estHeight: number }
+): DockAnchor {
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const cx = pos.left + FAB_SIZE / 2;
+  const cy = pos.top + FAB_SIZE / 2;
+  const x: DockPlacementX = cx < vw / 2 ? "right" : "left";
+  const y: DockPlacementY = cy < vh / 2 ? "below" : "above";
+  const { gap, estWidth, estHeight } = opts;
+
+  const style: DockAnchor["style"] = { left: "auto", right: "auto" };
+
+  if (x === "right") {
+    const left = pos.left + FAB_SIZE + gap;
+    style.left = Math.min(left, Math.max(FAB_MARGIN, vw - FAB_MARGIN - estWidth));
+    style.right = "auto";
+  } else {
+    const right = Math.max(FAB_MARGIN, vw - pos.left + gap);
+    const maxRight = Math.max(FAB_MARGIN, vw - FAB_MARGIN - estWidth);
+    style.right = Math.min(right, maxRight);
+    style.left = "auto";
+  }
+
+  if (y === "above") {
+    const bottom = Math.max(FAB_MARGIN, vh - pos.top + gap);
+    style.bottom = Math.min(bottom, Math.max(FAB_MARGIN, vh - FAB_MARGIN - estHeight));
+    style.top = undefined;
+  } else {
+    const top = pos.top + FAB_SIZE + gap;
+    style.top = Math.min(top, Math.max(FAB_MARGIN, vh - FAB_MARGIN - estHeight));
+    style.bottom = undefined;
+  }
+
+  const tipClass =
+    x === "right" && y === "above"
+      ? "rounded-bl-md"
+      : x === "right" && y === "below"
+        ? "rounded-tl-md"
+        : x === "left" && y === "above"
+          ? "rounded-br-md"
+          : "rounded-tr-md";
+
+  const enterClass = [
+    y === "above" ? "slide-in-from-bottom-2" : "slide-in-from-top-2",
+    x === "right" ? "slide-in-from-left-2" : "slide-in-from-right-2",
+  ].join(" ");
+
+  return { x, y, style, tipClass, enterClass };
+}
 
 function TypingDots() {
   return (
@@ -70,8 +228,105 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   const [langByMsg, setLangByMsg] = useState<Record<string, ChatLang>>({});
   const [loadingList, setLoadingList] = useState(false);
   const [peerTyping, setPeerTyping] = useState<PeerTyping | null>(null);
+  const [headsUp, setHeadsUp] = useState<HeadsUp | null>(null);
+  const [socketOk, setSocketOk] = useState(false);
+  const [bubblePos, setBubblePos] = useState<BubblePos>(() =>
+    typeof window !== "undefined" ? loadBubblePos() : { left: FAB_MARGIN, top: FAB_MARGIN }
+  );
+  const [dragging, setDragging] = useState(false);
   const typingIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingActiveRef = useRef(false);
+  const activeIncidentRef = useRef<string | null>(null);
+  const openRef = useRef(false);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origLeft: number;
+    origTop: number;
+    moved: boolean;
+  } | null>(null);
+  activeIncidentRef.current = activeIncidentId;
+  openRef.current = open;
+
+  const previewAnchor = useMemo(() => {
+    if (typeof window === "undefined") {
+      return computeDockAnchor(bubblePos, { gap: 12, estWidth: 320, estHeight: 120 });
+    }
+    const estWidth = Math.min(320, window.innerWidth - FAB_MARGIN * 2 - FAB_SIZE - 12);
+    return computeDockAnchor(bubblePos, { gap: 12, estWidth, estHeight: 120 });
+  }, [bubblePos]);
+
+  const panelAnchor = useMemo(() => {
+    if (typeof window === "undefined") {
+      return computeDockAnchor(bubblePos, { gap: 16, estWidth: 420, estHeight: 640 });
+    }
+    const estWidth = Math.min(420, window.innerWidth - FAB_MARGIN * 2);
+    const estHeight = Math.min(640, window.innerHeight - FAB_MARGIN * 2 - FAB_SIZE - 16);
+    return computeDockAnchor(bubblePos, { gap: 16, estWidth, estHeight });
+  }, [bubblePos]);
+
+  const panelStyle = panelAnchor.style;
+  const previewStyle = previewAnchor.style;
+
+  useEffect(() => {
+    const onResize = () => setBubblePos((p) => snapBubblePos(p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onFabPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origLeft: bubblePos.left,
+      origTop: bubblePos.top,
+      moved: false,
+    };
+  };
+
+  const onFabPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+    d.moved = true;
+    setDragging(true);
+    setBubblePos(
+      clampBubblePos({
+        left: d.origLeft + dx,
+        top: d.origTop + dy,
+      })
+    );
+  };
+
+  const endFabDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    dragRef.current = null;
+    if (d.moved) {
+      setBubblePos((p) => {
+        const next = snapBubblePos(p);
+        saveBubblePos(next);
+        return next;
+      });
+      setDragging(false);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    setDragging(false);
+    setOpen((v) => !v);
+  };
 
   const typingMeta = useMemo(
     () => ({
@@ -113,7 +368,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   const loadConversations = useCallback(async () => {
     setLoadingList(true);
     try {
-      const rows = await api.managerConversations();
+      const rows = await api.managerConversations(session?.userId);
       setConversations(rows);
     } catch (err) {
       console.error(err);
@@ -121,7 +376,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     } finally {
       setLoadingList(false);
     }
-  }, [t]);
+  }, [t, session?.userId]);
 
   const loadMessages = useCallback(async (incidentId: string) => {
     try {
@@ -144,11 +399,101 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   }, []);
 
   useEffect(() => {
+    joinManagersRoom();
+    void registerWebPush();
+    const sock = getSocket();
+    const onConnect = () => setSocketOk(true);
+    const onDisconnect = () => setSocketOk(false);
+    if (sock.connected) setSocketOk(true);
+    sock.on("connect", onConnect);
+    sock.on("disconnect", onDisconnect);
+
+    const onMessageNew = (payload: ChatMessagePayload) => {
+      const incidentId = String(payload.incidentId || "");
+      if (!incidentId || !payload.message) return;
+
+      // Chỉ gắn vào thread khi panel đang mở đúng phòng đó
+      const viewingThread =
+        openRef.current && activeIncidentRef.current === incidentId;
+      if (viewingThread) {
+        setMessages((prev) => {
+          if (prev.some((m) => String(m.id) === String(payload.message!.id))) return prev;
+          return [
+            ...prev,
+            {
+              id: String(payload.message!.id),
+              text: payload.message!.text,
+              sender: payload.message!.sender as ChatMessage["sender"],
+              senderName: payload.message!.senderName,
+              createdAt: payload.message!.createdAt || new Date().toISOString(),
+              sourceLang: payload.message!.sourceLang as ChatMessage["sourceLang"],
+              translations: payload.message!.translations || {},
+            },
+          ];
+        });
+        if (session?.userId) {
+          void api.markChatRead(session.userId, incidentId).then(() => void loadConversations());
+        } else {
+          void loadConversations();
+        }
+        return;
+      }
+
+      // Tăng unread ngay trên list (trước khi reload)
+      setConversations((prev) =>
+        prev.map((c) =>
+          String(c.incidentId) === incidentId
+            ? { ...c, unreadCount: (c.unreadCount || 0) + 1 }
+            : c
+        )
+      );
+
+      // Preview nội dung tin nhắn vài giây (kiểu Messenger) — không chỉ badge số
+      setHeadsUp({
+        id: `${payload.message.id}-${Date.now()}`,
+        incidentId,
+        title: payload.preview?.senderName || payload.message.senderName || "Chat",
+        body: payload.preview?.lastMessage || payload.message.text,
+      });
+      void loadConversations();
+    };
+
+    const onConversationUpdated = () => {
+      void loadConversations();
+    };
+
+    const onResolved = (payload: ChatMessagePayload) => {
+      void loadConversations();
+      if (activeIncidentRef.current === String(payload.incidentId)) {
+        void loadMessages(String(payload.incidentId));
+      }
+    };
+
+    sock.on("message:new", onMessageNew);
+    sock.on("conversation:updated", onConversationUpdated);
+    sock.on("incident:resolved", onResolved);
+    return () => {
+      sock.off("connect", onConnect);
+      sock.off("disconnect", onDisconnect);
+      sock.off("message:new", onMessageNew);
+      sock.off("conversation:updated", onConversationUpdated);
+      sock.off("incident:resolved", onResolved);
+    };
+  }, [loadConversations, loadMessages, session?.userId]);
+
+  useEffect(() => {
+    if (!headsUp) return;
+    const id = window.setTimeout(() => setHeadsUp(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [headsUp]);
+
+  useEffect(() => {
     if (!open) return;
     void loadConversations();
+    if (socketOk) return;
     const id = window.setInterval(() => void loadConversations(), 8000);
     return () => window.clearInterval(id);
-  }, [open, loadConversations]);
+  }, [open, loadConversations, socketOk]);
 
   useEffect(() => {
     if (!focusIncidentId) return;
@@ -165,6 +510,14 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     }
     void loadMessages(activeIncidentId);
     joinIncidentRoom(activeIncidentId, typingMeta);
+
+    // Đánh dấu đã đọc → badge unread giảm realtime
+    if (session?.userId) {
+      void api
+        .markChatRead(session.userId, activeIncidentId)
+        .then(() => void loadConversations())
+        .catch(() => undefined);
+    }
 
     const sock = getSocket();
     const onTyping = (payload: TypingPayload) => {
@@ -190,19 +543,38 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     };
     sock.on("typing", onTyping);
 
-    const id = window.setInterval(() => void loadMessages(activeIncidentId), 5000);
+    const pollId =
+      socketOk || sock.connected
+        ? null
+        : window.setInterval(() => void loadMessages(activeIncidentId), 5000);
     return () => {
-      window.clearInterval(id);
+      if (pollId) window.clearInterval(pollId);
       sock.off("typing", onTyping);
       stopTyping(activeIncidentId);
       leaveIncidentRoom(activeIncidentId, typingMeta);
       setPeerTyping(null);
     };
-  }, [open, activeIncidentId, loadMessages, session?.userId, stopTyping, typingMeta]);
+  }, [
+    open,
+    activeIncidentId,
+    loadMessages,
+    loadConversations,
+    session?.userId,
+    stopTyping,
+    typingMeta,
+    socketOk,
+  ]);
+
+  const unreadTotal = useMemo(
+    () => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+    [conversations]
+  );
 
   const openCount = useMemo(
     () =>
-      conversations.filter((c) => c.isActive && c.incidentStatus !== "resolved").length,
+      conversations.filter(
+        (c) => c.isOpen === true || (c.isActive && c.incidentStatus !== "resolved")
+      ).length,
     [conversations]
   );
 
@@ -343,22 +715,80 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
 
   return (
     <>
-      {/* Bubble */}
+      {/* Preview tin nhắn nổi cạnh FAB ~5s — neo X/Y theo vị trí bóng */}
+      {headsUp && !open && (
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(true);
+            setActiveIncidentId(headsUp.incidentId);
+            setHeadsUp(null);
+          }}
+          className={cn(
+            "fixed z-50 w-[min(320px,calc(100vw-5.5rem))]",
+            "rounded-2xl border border-border bg-card text-foreground",
+            previewAnchor.tipClass,
+            "shadow-elevated px-3.5 py-3 text-left",
+            "animate-in fade-in duration-200",
+            previewAnchor.enterClass
+          )}
+          style={previewStyle}
+        >
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-primary mb-0.5">
+            {t("chat.newMessage")}
+          </div>
+          <div className="font-semibold text-sm truncate">{headsUp.title}</div>
+          <div className="text-sm text-foreground/90 line-clamp-3 mt-1 leading-snug whitespace-pre-wrap">
+            {headsUp.body}
+          </div>
+        </button>
+      )}
+      {headsUp && open && (
+        <button
+          type="button"
+          onClick={() => {
+            setActiveIncidentId(headsUp.incidentId);
+            setHeadsUp(null);
+          }}
+          className={cn(
+            "fixed z-50 top-4 left-1/2 -translate-x-1/2 w-[min(420px,calc(100vw-1.5rem))]",
+            "rounded-2xl bg-primary text-primary-foreground shadow-elevated px-4 py-3 text-left"
+          )}
+        >
+          <div className="text-[10px] font-semibold uppercase opacity-80 mb-0.5">
+            {t("chat.newMessage")}
+          </div>
+          <div className="font-semibold text-sm truncate">{headsUp.title}</div>
+          <div className="text-sm opacity-95 line-clamp-3 mt-1 whitespace-pre-wrap">{headsUp.body}</div>
+        </button>
+      )}
+
+      {/* Bubble — kéo được, snap trái/phải */}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onPointerDown={onFabPointerDown}
+        onPointerMove={onFabPointerMove}
+        onPointerUp={endFabDrag}
+        onPointerCancel={endFabDrag}
         className={cn(
-          "fixed z-40 bottom-5 right-5 h-14 w-14 rounded-full shadow-elevated",
+          "fixed z-40 h-14 w-14 rounded-full shadow-elevated touch-none select-none",
           "bg-primary text-primary-foreground flex items-center justify-center",
-          "hover:scale-105 active:scale-95 transition-transform",
-          open && "ring-4 ring-primary/30"
+          !dragging && "hover:scale-105 active:scale-95 transition-transform",
+          dragging && "cursor-grabbing scale-105",
+          open && "ring-4 ring-primary/30",
+          headsUp && !open && "ring-4 ring-destructive/40"
         )}
+        style={{ left: bubblePos.left, top: bubblePos.top, right: "auto", bottom: "auto" }}
         aria-label={t("chat.bubble")}
       >
-        {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
-        {!open && openCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
-            {openCount > 99 ? "99+" : openCount}
+        {open ? <X className="h-6 w-6 pointer-events-none" /> : <MessageCircle className="h-6 w-6 pointer-events-none" />}
+        {!open && (headsUp || unreadTotal > 0) && (
+          <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center pointer-events-none">
+            {headsUp && unreadTotal === 0
+              ? "!"
+              : unreadTotal > 99
+                ? "99+"
+                : unreadTotal}
           </span>
         )}
       </button>
@@ -367,9 +797,10 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
       {open && (
         <div
           className={cn(
-            "fixed z-40 bottom-24 right-5 w-[min(420px,calc(100vw-1.5rem))] h-[min(640px,calc(100vh-7rem))]",
+            "fixed z-40 w-[min(420px,calc(100vw-1.5rem))] h-[min(640px,calc(100vh-7rem))]",
             "rounded-2xl border-2 border-border bg-card shadow-elevated flex flex-col overflow-hidden"
           )}
+          style={panelStyle}
         >
           <header className="flex-shrink-0 px-3 py-2.5 border-b border-border bg-primary text-primary-foreground flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -386,7 +817,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     ]
                       .filter(Boolean)
                       .join(" · ")
-                  : t("chat.openCount", { n: openCount })}
+                  : unreadTotal > 0
+                    ? `${unreadTotal} chưa đọc · ${t("chat.openCount", { n: openCount })}`
+                    : t("chat.openCount", { n: openCount })}
               </div>
             </div>
             <button
@@ -428,38 +861,56 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     </p>
                   )}
                   {filtered.map((c) => {
-                    const openRoom = c.isActive && c.incidentStatus !== "resolved";
+                    const openRoom =
+                      c.isOpen === true || (c.isActive && c.incidentStatus !== "resolved");
+                    const activityAt = c.lastActivityAt || c.lastMessageAt;
+                    const unread = c.unreadCount || 0;
                     return (
                       <button
                         key={c.conversationId}
                         type="button"
                         onClick={() => setActiveIncidentId(c.incidentId)}
-                        className="w-full text-left rounded-xl border border-border bg-background hover:border-primary/50 p-3 transition-colors"
+                        className={cn(
+                          "w-full text-left rounded-xl border bg-background hover:border-primary/50 p-3 transition-colors",
+                          unread > 0 ? "border-primary/40" : "border-border"
+                        )}
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="font-semibold text-sm text-foreground truncate">
                             {tabletLabel(c.tabletUsername || c.displayName)}
                           </div>
-                          <span
-                            className={cn(
-                              "text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0",
-                              openRoom
-                                ? "bg-primary/10 text-primary border-primary/30"
-                                : "bg-muted text-muted-foreground border-border"
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {unread > 0 && (
+                              <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                                {unread > 99 ? "99+" : unread}
+                              </span>
                             )}
-                          >
-                            {t(`status.${c.incidentStatus}`)}
-                          </span>
+                            <span
+                              className={cn(
+                                "text-[10px] font-semibold px-1.5 py-0.5 rounded-full border",
+                                openRoom
+                                  ? "bg-primary/10 text-primary border-primary/30"
+                                  : "bg-muted text-muted-foreground border-border"
+                              )}
+                            >
+                              {t(`status.${c.incidentStatus}`)}
+                            </span>
+                          </div>
                         </div>
                         <div className="text-[11px] text-muted-foreground truncate">
                           {c.deviceCode} · {zoneLabel(c.zoneCode, locale, c.zoneName)}
                         </div>
-                        <div className="text-xs text-foreground/80 line-clamp-1 mt-1">
+                        <div
+                          className={cn(
+                            "text-xs line-clamp-1 mt-1",
+                            unread > 0 ? "font-semibold text-foreground" : "text-foreground/80"
+                          )}
+                        >
                           {c.lastMessage || t("chat.lastMessageEmpty")}
                         </div>
-                        {c.lastMessageAt && (
+                        {activityAt && (
                           <div className="text-[10px] text-muted-foreground mt-1">
-                            {new Date(c.lastMessageAt).toLocaleString(timeLocale, {
+                            {new Date(activityAt).toLocaleString(timeLocale, {
                               hour: "2-digit",
                               minute: "2-digit",
                               day: "2-digit",

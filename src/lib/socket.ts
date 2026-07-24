@@ -8,6 +8,30 @@ export type TypingPayload = {
   isTyping: boolean;
 };
 
+export type ChatMessagePayload = {
+  incidentId: string;
+  conversationId?: string | null;
+  zoneId?: string | number | null;
+  message?: {
+    id: string;
+    text: string;
+    sender: string;
+    senderName: string;
+    createdAt?: string | null;
+    sourceLang?: string | null;
+    translations?: Record<string, string>;
+  } | null;
+  preview?: {
+    lastMessage?: string;
+    lastMessageAt?: string;
+    lastActivityAt?: string;
+    sender?: string;
+    senderName?: string;
+  } | null;
+  incidentStatus?: string;
+  isActive?: boolean;
+};
+
 let socket: Socket | null = null;
 
 /** Dev: same origin → Vite proxies /socket.io. Prod/LAN with VITE_API_URL: connect to API host. */
@@ -47,6 +71,10 @@ export function leaveIncidentRoom(
     incidentId: String(incidentId),
     userId: meta.userId ?? null,
   });
+}
+
+export function joinManagersRoom() {
+  getSocket().emit("join:managers");
 }
 
 export function emitTypingStart(
