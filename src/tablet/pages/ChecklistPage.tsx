@@ -210,10 +210,10 @@ const ChecklistPage = () => {
           </div>
         )}
 
-        <div className="rounded-xl bg-gradient-to-r from-primary to-primary-glow text-primary-foreground p-5 md:p-6 shadow-elevated">
+        <div className="rounded-xl bg-primary text-primary-foreground p-5 md:p-6 shadow-card">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-xs font-medium opacity-80 uppercase tracking-wider">
+              <div className="text-label-caps uppercase opacity-80">
                 Phiếu kiểm tra · {shift.shift.label}
               </div>
               <div className="text-lg md:text-2xl font-bold mt-1 truncate">

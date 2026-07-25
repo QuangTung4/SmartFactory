@@ -40,7 +40,7 @@ const ZoneSelect = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-background via-background to-accent/30">
+    <div className="min-h-screen flex flex-col bg-background">
       <div className="absolute top-4 right-4">
         <Button
           variant="outline"
@@ -59,11 +59,13 @@ const ZoneSelect = () => {
       <div className="flex-1 flex items-center justify-center p-6 md:p-10">
         <div className="w-full max-w-5xl">
           <div className="text-center mb-10">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-4">
-              <ShieldCheck className="h-4 w-4" />
-              SmartFactory Check & Chat
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary text-primary-foreground mb-4 shadow-card">
+              <ShieldCheck className="h-6 w-6" />
             </div>
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">
+              SmartFactory Check & Chat
+            </p>
+            <h1 className="text-headline-lg md:text-3xl font-bold text-foreground mb-2">
               Chọn khu vực làm việc
             </h1>
             <p className="text-muted-foreground text-base">
@@ -89,12 +91,12 @@ const ZoneSelect = () => {
                 <button
                   key={zone.id}
                   onClick={() => select(zone.id, zone.name)}
-                  className={`group relative bg-card border-2 rounded-2xl p-6 md:p-8 shadow-card hover:shadow-elevated transition-all active:scale-[0.98] text-left ${
-                    assigned ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary"
+                  className={`group relative bg-card border-2 rounded-xl p-6 md:p-8 shadow-card hover:shadow-elevated transition-colors active:scale-[0.98] text-left ${
+                    assigned ? "border-primary bg-accent" : "border-border hover:border-primary"
                   }`}
                 >
                   <div
-                    className="w-14 h-14 md:w-16 md:h-16 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110"
+                    className="w-14 h-14 md:w-16 md:h-16 rounded-lg flex items-center justify-center mb-4"
                     style={{ backgroundColor: `${zone.color}20` }}
                   >
                     {Icon && <Icon className="h-7 w-7 md:h-8 md:w-8" style={{ color: zone.color }} />}

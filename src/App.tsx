@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "next-themes";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -21,38 +22,40 @@ const queryClient = new QueryClient();
  */
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <LocaleProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="/login" element={<LoginPage />} />
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="sf-theme">
+      <LocaleProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Navigate to="/login" replace />} />
+              <Route path="/login" element={<LoginPage />} />
 
-            <Route
-              path="/manager"
-              element={
-                <RequireAuth role="admin">
-                  <ManagerLayout />
-                </RequireAuth>
-              }
-            >
-              <Route index element={<DashboardPage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="incidents" element={<IncidentsPage />} />
-              <Route path="inspection-log" element={<InspectionLogPage />} />
-            </Route>
+              <Route
+                path="/manager"
+                element={
+                  <RequireAuth role="admin">
+                    <ManagerLayout />
+                  </RequireAuth>
+                }
+              >
+                <Route index element={<DashboardPage />} />
+                <Route path="reports" element={<ReportsPage />} />
+                <Route path="incidents" element={<IncidentsPage />} />
+                <Route path="inspection-log" element={<InspectionLogPage />} />
+              </Route>
 
-            <Route path="/tablet" element={<Navigate to="/login" replace />} />
-            <Route path="/dashboard" element={<Navigate to="/login" replace />} />
-            <Route path="/checklist/:deviceId" element={<Navigate to="/login" replace />} />
+              <Route path="/tablet" element={<Navigate to="/login" replace />} />
+              <Route path="/dashboard" element={<Navigate to="/login" replace />} />
+              <Route path="/checklist/:deviceId" element={<Navigate to="/login" replace />} />
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </LocaleProvider>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </LocaleProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

@@ -37,18 +37,18 @@ export function ManagerSidebar({ collapsed, onToggle }: Props) {
   return (
     <aside
       className={cn(
-        "flex-shrink-0 border-r border-border bg-card flex flex-col transition-[width] duration-200 ease-out",
+        "flex-shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground flex flex-col transition-[width] duration-200 ease-out",
         collapsed ? "w-[56px]" : "w-56 md:w-60"
       )}
     >
       <div
         className={cn(
-          "border-b border-border flex items-center gap-2",
+          "border-b border-sidebar-border flex items-center gap-2",
           collapsed ? "px-1.5 py-2 justify-center" : "px-3 py-2.5 justify-between"
         )}
       >
         {!collapsed && (
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground truncate">
+          <div className="text-label-caps uppercase text-muted-foreground truncate">
             {t("nav.menu")}
           </div>
         )}
@@ -56,7 +56,7 @@ export function ManagerSidebar({ collapsed, onToggle }: Props) {
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 flex-shrink-0"
+          className="h-8 w-8 flex-shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           onClick={onToggle}
           title={collapsed ? t("nav.expand") : t("nav.collapse")}
           aria-label={collapsed ? t("nav.expand") : t("nav.collapse")}
@@ -79,11 +79,11 @@ export function ManagerSidebar({ collapsed, onToggle }: Props) {
               title={t(item.labelKey)}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center rounded-lg text-sm font-medium transition-colors",
+                  "flex items-center rounded-md text-sm font-medium transition-colors",
                   collapsed ? "justify-center px-0 py-2.5" : "gap-2.5 px-3 py-2.5",
                   isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                 )
               }
             >

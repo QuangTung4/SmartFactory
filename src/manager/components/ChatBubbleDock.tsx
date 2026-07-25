@@ -726,7 +726,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
           }}
           className={cn(
             "fixed z-50 w-[min(320px,calc(100vw-5.5rem))]",
-            "rounded-2xl border border-border bg-card text-foreground",
+            "rounded-xl border border-border bg-card text-foreground",
             previewAnchor.tipClass,
             "shadow-elevated px-3.5 py-3 text-left",
             "animate-in fade-in duration-200",
@@ -752,7 +752,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
           }}
           className={cn(
             "fixed z-50 top-4 left-1/2 -translate-x-1/2 w-[min(420px,calc(100vw-1.5rem))]",
-            "rounded-2xl bg-primary text-primary-foreground shadow-elevated px-4 py-3 text-left"
+            "rounded-xl bg-primary text-primary-foreground shadow-elevated px-4 py-3 text-left"
           )}
         >
           <div className="text-[10px] font-semibold uppercase opacity-80 mb-0.5">
@@ -771,10 +771,10 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         onPointerUp={endFabDrag}
         onPointerCancel={endFabDrag}
         className={cn(
-          "fixed z-40 h-14 w-14 rounded-full shadow-elevated touch-none select-none",
+          "fixed z-40 h-touch w-touch rounded-xl shadow-fab touch-none select-none",
           "bg-primary text-primary-foreground flex items-center justify-center",
-          !dragging && "hover:scale-105 active:scale-95 transition-transform",
-          dragging && "cursor-grabbing scale-105",
+          !dragging && "hover:bg-primary-glow active:scale-95 transition-colors",
+          dragging && "cursor-grabbing",
           open && "ring-4 ring-primary/30",
           headsUp && !open && "ring-4 ring-destructive/40"
         )}
@@ -798,7 +798,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         <div
           className={cn(
             "fixed z-40 w-[min(420px,calc(100vw-1.5rem))] h-[min(640px,calc(100vh-7rem))]",
-            "rounded-2xl border-2 border-border bg-card shadow-elevated flex flex-col overflow-hidden"
+            "rounded-xl border-2 border-border bg-card shadow-elevated flex flex-col overflow-hidden"
           )}
           style={panelStyle}
         >
@@ -969,7 +969,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                       >
                         <div
                           className={cn(
-                            "max-w-[90%] rounded-2xl px-3 py-2 text-sm shadow-card",
+                            "max-w-[90%] rounded-xl px-3 py-2 text-sm shadow-card",
                             msg.sender === "system"
                               ? "bg-muted text-muted-foreground italic w-full text-center"
                               : msg.sender === "admin"
@@ -1026,7 +1026,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
 
                   {!chatLocked && peerTyping && (
                     <div className="flex flex-col items-start">
-                      <div className="max-w-[90%] rounded-2xl rounded-bl-md px-3 py-2 text-sm shadow-card bg-muted/60 border border-border text-muted-foreground">
+                      <div className="max-w-[90%] rounded-xl rounded-bl-md px-3 py-2 text-sm shadow-card bg-muted/60 border border-border text-muted-foreground">
                         <div className="text-[10px] font-semibold opacity-70 mb-0.5">
                           {peerTyping.username || peerTyping.userType || "…"}
                         </div>

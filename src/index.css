@@ -4,9 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Industrial Clean Design System
-   Tablet-first checklist app. All colors HSL.
-*/
+/* SmartFactory Control Room — tokens aligned with DESIGN.md */
 
 @layer base {
   :root {
@@ -19,45 +17,49 @@
     --popover: 0 0% 100%;
     --popover-foreground: 215 28% 17%;
 
-    /* Industrial blue #1e6091 */
+    /* Industrial blue #1E6091 */
     --primary: 205 66% 34%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 205 66% 45%;
+    --primary-glow: 205 61% 44%;
 
-    --secondary: 210 16% 93%;
+    --secondary: 205 16% 93%;
     --secondary-foreground: 215 28% 17%;
 
-    --muted: 210 16% 93%;
-    --muted-foreground: 215 14% 45%;
+    --muted: 205 16% 93%;
+    --muted-foreground: 215 14% 47%;
 
-    --accent: 205 66% 95%;
+    --accent: 205 55% 94%;
     --accent-foreground: 205 66% 34%;
 
-    /* Pass green #28a745 */
+    /* Pass green #28A745 */
     --success: 134 61% 41%;
     --success-foreground: 0 0% 100%;
-    --success-soft: 134 50% 94%;
+    --success-soft: 134 45% 94%;
 
-    /* Fail red #dc3545 */
+    /* Fail red #DC3545 */
     --destructive: 354 70% 54%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-soft: 354 80% 96%;
+    --destructive-soft: 354 70% 96%;
 
-    /* Draft yellow */
+    /* Draft yellow #FFC107 */
     --warning: 45 100% 51%;
-    --warning-foreground: 35 30% 15%;
+    --warning-foreground: 40 55% 14%;
     --warning-soft: 48 100% 94%;
 
-    --border: 215 20% 88%;
-    --input: 215 20% 88%;
+    --border: 210 18% 87%;
+    --input: 210 18% 87%;
     --ring: 205 66% 34%;
 
     --radius: 0.75rem;
 
-    /* Status colors for cards */
     --status-todo: 0 0% 100%;
     --status-draft: 48 100% 94%;
-    --status-done: 134 50% 94%;
+    --status-done: 134 45% 94%;
+
+    /* Chart series — same hex family as DESIGN.md chart-* */
+    --chart-ok: 134 61% 41%;
+    --chart-ng: 354 70% 54%;
+    --chart-missing: 215 12% 60%;
 
     --shadow-card: 0 2px 8px -2px hsl(215 28% 17% / 0.08), 0 1px 3px -1px hsl(215 28% 17% / 0.06);
     --shadow-elevated: 0 8px 24px -8px hsl(215 28% 17% / 0.18);
@@ -66,14 +68,78 @@
     --header-h: 64px;
     --footer-h: 72px;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar aligned to industrial primary (not default slate) */
+    --sidebar-background: 210 25% 98%;
+    --sidebar-foreground: 215 28% 17%;
+    --sidebar-primary: 205 66% 34%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 205 55% 94%;
+    --sidebar-accent-foreground: 205 66% 34%;
+    --sidebar-border: 210 18% 87%;
+    --sidebar-ring: 205 66% 34%;
+  }
+
+  /* Control Room — dark mode (cùng bản sắc, nền mực công nghiệp) */
+  .dark {
+    --background: 215 28% 9%;
+    --foreground: 210 20% 96%;
+
+    --card: 215 25% 12%;
+    --card-foreground: 210 20% 96%;
+
+    --popover: 215 25% 12%;
+    --popover-foreground: 210 20% 96%;
+
+    /* Primary sáng hơn trên nền tối để đủ contrast */
+    --primary: 205 66% 48%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 205 61% 58%;
+
+    --secondary: 215 18% 16%;
+    --secondary-foreground: 210 20% 96%;
+
+    --muted: 215 18% 16%;
+    --muted-foreground: 215 12% 68%;
+
+    --accent: 205 35% 18%;
+    --accent-foreground: 205 70% 78%;
+
+    --success: 134 55% 48%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 134 35% 14%;
+
+    --destructive: 354 70% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 354 45% 16%;
+
+    --warning: 45 95% 52%;
+    --warning-foreground: 48 100% 92%;
+    --warning-soft: 45 50% 14%;
+
+    --border: 215 16% 22%;
+    --input: 215 16% 22%;
+    --ring: 205 66% 48%;
+
+    --status-todo: 215 25% 12%;
+    --status-draft: 45 50% 14%;
+    --status-done: 134 35% 14%;
+
+    --chart-ok: 134 55% 48%;
+    --chart-ng: 354 70% 58%;
+    --chart-missing: 215 10% 55%;
+
+    --shadow-card: 0 2px 8px -2px hsl(0 0% 0% / 0.45), 0 1px 3px -1px hsl(0 0% 0% / 0.35);
+    --shadow-elevated: 0 8px 24px -8px hsl(0 0% 0% / 0.55);
+    --shadow-fab: 0 8px 20px -4px hsl(205 66% 48% / 0.5);
+
+    --sidebar-background: 215 28% 8%;
+    --sidebar-foreground: 210 20% 96%;
+    --sidebar-primary: 205 66% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 205 35% 18%;
+    --sidebar-accent-foreground: 205 70% 78%;
+    --sidebar-border: 215 16% 20%;
+    --sidebar-ring: 205 66% 48%;
   }
 }
 
@@ -102,5 +168,8 @@
   }
   .safe-grid-gap {
     gap: 16px;
+  }
+  .font-kpi {
+    font-variant-numeric: tabular-nums;
   }
 }

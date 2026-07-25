@@ -150,7 +150,7 @@ const Dashboard = () => {
                 <button
                   key={d.id}
                   onClick={() => navigate(`/checklist/${d.id}`)}
-                  className={`text-left rounded-2xl border-2 p-4 md:p-5 shadow-card hover:shadow-elevated active:scale-[0.99] transition-all ${cfg.className}`}
+                  className={`text-left rounded-xl border-2 p-4 md:p-5 shadow-card hover:shadow-elevated active:scale-[0.99] transition-colors ${cfg.className}`}
                 >
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="min-w-0 flex-1">
@@ -212,11 +212,10 @@ const Dashboard = () => {
 
         <button
           onClick={() => setScanOpen(true)}
-          className="fixed bottom-24 right-6 md:right-10 z-30 w-16 h-16 md:w-20 md:h-20 rounded-full bg-primary text-primary-foreground shadow-fab flex items-center justify-center active:scale-95 transition-transform"
+          className="fixed bottom-24 right-6 md:right-10 z-30 w-touch h-touch md:w-20 md:h-20 rounded-xl bg-primary text-primary-foreground shadow-fab flex items-center justify-center hover:bg-primary-glow active:scale-95 transition-colors"
           aria-label="Quét mã QR"
         >
-          <span className="absolute inset-0 rounded-full bg-primary animate-pulse-ring" />
-          <QrCode className="h-7 w-7 md:h-8 md:w-8 relative" />
+          <QrCode className="h-7 w-7 md:h-8 md:w-8" />
         </button>
       </AppShell>
 
@@ -241,9 +240,9 @@ const StatCard = ({
     danger: "bg-destructive/10 text-destructive border-destructive/30",
   }[variant];
   return (
-    <div className={`rounded-xl border-2 p-3 md:p-4 ${styles}`}>
-      <div className="text-2xl md:text-3xl font-bold leading-none">{value}</div>
-      <div className="text-xs md:text-sm font-medium mt-1 opacity-80">{label}</div>
+    <div className={`rounded-xl border shadow-card p-3 md:p-4 ${styles}`}>
+      <div className="text-kpi font-kpi">{value}</div>
+      <div className="text-label-caps uppercase mt-1.5 opacity-80">{label}</div>
     </div>
   );
 };

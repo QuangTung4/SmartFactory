@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { LogOut, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useLocale } from "@/i18n/LocaleContext";
 import { toast } from "sonner";
 import { getSession, logout } from "@/lib/auth-store";
@@ -31,24 +32,31 @@ export default function ManagerLayout() {
 
   return (
     <div className="h-screen flex flex-col bg-background relative">
-      <header className="flex-shrink-0 border-b border-border bg-primary text-primary-foreground px-4 md:px-6 py-3">
-        <div className="flex items-center justify-between gap-4 w-full">
+      <header
+        className="flex-shrink-0 border-b border-primary/20 bg-primary text-primary-foreground px-4 md:px-6"
+        style={{ height: "var(--header-h)" }}
+      >
+        <div className="flex items-center justify-between gap-4 w-full h-full">
           <div className="flex items-center gap-3 min-w-0">
-            <ShieldCheck className="h-7 w-7 flex-shrink-0" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-foreground/15 flex-shrink-0">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
             <div className="min-w-0">
-              <div className="font-bold text-lg leading-tight truncate">
+              <div className="font-bold text-base md:text-lg leading-tight truncate">
                 SmartFactory · {t("app.controlRoom")}
               </div>
-              <div className="text-xs opacity-80 truncate">
+              <div className="text-[11px] md:text-xs text-primary-foreground/80 truncate">
                 {t("app.managerWeb")} · {session?.username || "admin"}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <ThemeSwitcher variant="primary" />
             <LanguageSwitcher variant="primary" />
             <Button
               variant="secondary"
               size="sm"
+              className="bg-primary-foreground/15 text-primary-foreground border-0 hover:bg-primary-foreground/25"
               onClick={() => {
                 logout();
                 toast.message(t("app.loggedOut"));

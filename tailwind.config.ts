@@ -14,6 +14,17 @@ export default {
       fontFamily: {
         sans: ["Roboto", "system-ui", "sans-serif"],
       },
+      fontSize: {
+        "headline-lg": ["1.5rem", { lineHeight: "1.25", fontWeight: "700" }],
+        "headline-md": ["1.25rem", { lineHeight: "1.3", fontWeight: "700" }],
+        kpi: ["1.875rem", { lineHeight: "1", fontWeight: "700" }],
+        "label-caps": ["0.625rem", { lineHeight: "1.2", fontWeight: "700", letterSpacing: "0.06em" }],
+      },
+      spacing: {
+        header: "var(--header-h)",
+        footer: "var(--footer-h)",
+        touch: "56px",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -65,6 +76,11 @@ export default {
           draft: "hsl(var(--status-draft))",
           done: "hsl(var(--status-done))",
         },
+        chart: {
+          ok: "hsl(var(--chart-ok))",
+          ng: "hsl(var(--chart-ng))",
+          missing: "hsl(var(--chart-missing))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -85,6 +101,7 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "var(--radius)",
       },
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },

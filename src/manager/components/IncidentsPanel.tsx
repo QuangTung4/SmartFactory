@@ -55,9 +55,9 @@ export function IncidentsPanel({ incidents, selectedId, onSelect, sessionDate }:
                 key={inc.incidentId}
                 type="button"
                 onClick={() => onSelect(inc.incidentId)}
-                className={`w-full text-left rounded-lg border p-2.5 transition-all ${
+                className={`w-full text-left rounded-md border p-2.5 transition-colors shadow-card ${
                   active
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-accent"
                     : "border-border bg-card hover:border-primary/40"
                 }`}
               >
@@ -71,7 +71,7 @@ export function IncidentsPanel({ incidents, selectedId, onSelect, sessionDate }:
                     </span>
                   </div>
                   <span
-                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${statusClass[inc.incidentStatus]}`}
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border flex-shrink-0 ${statusClass[inc.incidentStatus]}`}
                   >
                     {t(`status.${inc.incidentStatus}`)}
                   </span>

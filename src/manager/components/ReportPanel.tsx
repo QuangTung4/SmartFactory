@@ -164,7 +164,7 @@ export function ReportPanel({
               onClick={() => onFilterChange(f.key)}
               className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border transition-colors ${
                 filter === f.key
-                  ? "border-primary bg-primary/10 text-primary"
+                  ? "border-primary bg-accent text-primary"
                   : "border-border bg-card text-muted-foreground hover:border-primary/40"
               }`}
             >
@@ -244,7 +244,7 @@ export function ReportPanel({
                         </span>
                       </div>
                       <span
-                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${statusTone[m.reportStatus]}`}
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border flex-shrink-0 ${statusTone[m.reportStatus]}`}
                       >
                         {t(`report.status.${m.reportStatus}`)}
                       </span>

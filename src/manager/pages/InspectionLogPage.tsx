@@ -76,7 +76,7 @@ export default function InspectionLogPage() {
               {rows.map((row) => (
                 <div
                   key={row.checkId}
-                  className="rounded-lg border border-border bg-card p-2.5"
+                  className="rounded-md border border-border bg-card p-2.5 shadow-card"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex items-baseline gap-2">

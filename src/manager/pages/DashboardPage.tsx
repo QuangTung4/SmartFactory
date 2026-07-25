@@ -32,11 +32,11 @@ import {
 
 type Period = ReportPeriodKind;
 
-/** Solid colors — clearer on SVG strokes than nested hsl(var(...)) */
+/** Chart series — DESIGN.md chart-ok / chart-ng / chart-missing */
 const STATUS_COLORS = {
-  ok: "#22a06b",
-  ng: "#e5484d",
-  missing: "#8b95a5",
+  ok: "hsl(var(--chart-ok))",
+  ng: "hsl(var(--chart-ng))",
+  missing: "hsl(var(--chart-missing))",
 };
 
 function rangeWithGrain(period: Period, anchor: Date) {
@@ -198,7 +198,7 @@ export default function DashboardPage() {
         <div className="p-4 md:p-6 space-y-4 w-full">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl font-bold text-foreground">{t("dashboard.title")}</h1>
+              <h1 className="text-headline-md text-foreground">{t("dashboard.title")}</h1>
               <p className="text-xs text-muted-foreground mt-1">
                 <span className="font-semibold text-foreground">{periodCode}</span>
                 {period !== "day" ? ` · ${rangeHint}` : ""}
@@ -212,7 +212,7 @@ export default function DashboardPage() {
                   onClick={() => setPeriod(p.key)}
                   className={`text-xs font-semibold px-3 py-1.5 rounded-md border transition-colors ${
                     period === p.key
-                      ? "border-primary bg-primary/10 text-primary"
+                      ? "border-primary bg-accent text-primary"
                       : "border-border bg-card text-muted-foreground hover:border-primary/40"
                   }`}
                 >
@@ -230,25 +230,38 @@ export default function DashboardPage() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { label: "OK", value: stats.totals.ok },
-                  { label: "NG", value: stats.totals.ng },
-                  { label: "MISSING", value: stats.totals.missing },
+                  {
+                    label: "OK",
+                    value: stats.totals.ok,
+                    tone: "border-success/30 bg-success-soft text-success",
+                  },
+                  {
+                    label: "NG",
+                    value: stats.totals.ng,
+                    tone: "border-destructive/30 bg-destructive-soft text-destructive",
+                  },
+                  {
+                    label: "MISSING",
+                    value: stats.totals.missing,
+                    tone: "border-border bg-card text-muted-foreground",
+                  },
                   {
                     label: t("dashboard.compliance"),
                     value: `${stats.totals.compliance}%`,
+                    tone: "border-primary/30 bg-accent text-primary",
                   },
                 ].map((card) => (
                   <div
                     key={card.label}
-                    className="rounded-xl border border-border bg-card p-4"
+                    className={`rounded-xl border shadow-card p-4 ${card.tone}`}
                   >
-                    <div className="text-xs text-muted-foreground">{card.label}</div>
-                    <div className="text-2xl font-bold mt-1">{card.value}</div>
+                    <div className="text-label-caps uppercase opacity-80">{card.label}</div>
+                    <div className="text-kpi font-kpi mt-1.5">{card.value}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-xl border border-border bg-card p-4">
+              <div className="rounded-xl border border-border bg-card p-4 shadow-card">
                 <h3 className="text-sm font-semibold mb-3">{t("dashboard.trend")}</h3>
                 <ChartContainer config={seriesConfig} className="!aspect-auto h-[280px] w-full">
                   <BarChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
@@ -295,7 +308,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-border bg-card p-4">
+                <div className="rounded-xl border border-border bg-card p-4 shadow-card">
                   <h3 className="text-sm font-semibold mb-3">{t("dashboard.statusShare")}</h3>
                   <ChartContainer config={seriesConfig} className="h-[220px] w-full">
                     <PieChart>
@@ -309,7 +322,7 @@ export default function DashboardPage() {
                   </ChartContainer>
                 </div>
 
-                <div className="rounded-xl border border-border bg-card p-4">
+                <div className="rounded-xl border border-border bg-card p-4 shadow-card">
                   <h3 className="text-sm font-semibold mb-3">{t("dashboard.byZone")}</h3>
                   <ChartContainer
                     config={{
@@ -336,7 +349,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-border bg-card p-4">
+              <div className="rounded-xl border border-border bg-card p-4 shadow-card">
                 <h3 className="text-sm font-semibold mb-3">{t("dashboard.incidents")}</h3>
                 <ChartContainer
                   config={{

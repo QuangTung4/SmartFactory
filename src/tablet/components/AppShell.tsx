@@ -45,7 +45,7 @@ export const AppShell = ({
   return (
     <div className="flex flex-col h-screen bg-background">
       <header
-        className="flex-shrink-0 bg-primary text-primary-foreground shadow-elevated z-20"
+        className="flex-shrink-0 bg-primary text-primary-foreground border-b border-primary/20 z-20"
         style={{ height: "var(--header-h)" }}
       >
         <div className="h-full flex items-center justify-between px-4 gap-3">
@@ -53,14 +53,14 @@ export const AppShell = ({
             {showBack && (
               <button
                 onClick={handleBack}
-                className="touch-target -ml-2 flex items-center justify-center rounded-lg hover:bg-white/10 active:bg-white/20 transition-colors"
+                className="touch-target -ml-2 flex items-center justify-center rounded-md hover:bg-primary-foreground/10 active:bg-primary-foreground/20 transition-colors"
                 aria-label="Quay lại"
               >
                 <ArrowLeft className="h-6 w-6" />
               </button>
             )}
             <div className="min-w-0">
-              <div className="font-bold text-lg leading-tight truncate">{title}</div>
+              <div className="font-bold text-base md:text-lg leading-tight truncate">{title}</div>
               {subtitle && (
                 <div className="text-xs text-primary-foreground/80 truncate">{subtitle}</div>
               )}
@@ -68,8 +68,8 @@ export const AppShell = ({
           </div>
 
           <div
-            className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-              online ? "bg-success/20 text-white" : "bg-destructive/30 text-white"
+            className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium ${
+              online ? "bg-success/25 text-primary-foreground" : "bg-destructive/35 text-primary-foreground"
             }`}
           >
             {online ? <Cloud className="h-4 w-4" /> : <CloudOff className="h-4 w-4" />}
@@ -77,7 +77,7 @@ export const AppShell = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary-foreground/10">
               <User className="h-4 w-4" />
               <span className="text-sm font-medium">{displayName}</span>
             </div>
@@ -85,7 +85,7 @@ export const AppShell = ({
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              className="touch-target text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
+              className="touch-target text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
               aria-label="Đăng xuất"
             >
               <LogOut className="h-5 w-5" />

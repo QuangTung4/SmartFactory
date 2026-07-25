@@ -29,7 +29,7 @@ export function LanguageSwitcher({ variant = "primary", className }: Props) {
       />
       <div
         className={cn(
-          "flex rounded-lg overflow-hidden text-xs font-bold border",
+          "flex rounded-md overflow-hidden text-xs font-bold border",
           variant === "primary"
             ? "border-white/30 bg-white/10"
             : "border-border bg-card"

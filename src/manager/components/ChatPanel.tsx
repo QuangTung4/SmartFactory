@@ -97,7 +97,7 @@ export function ChatPanel({
                 className={`flex flex-col ${msg.sender === "admin" ? "items-end" : "items-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-card ${
+                  className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm shadow-card ${
                     msg.sender === "system"
                       ? "bg-muted text-muted-foreground italic w-full text-center"
                       : msg.sender === "admin"

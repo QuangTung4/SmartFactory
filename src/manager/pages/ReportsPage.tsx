@@ -182,7 +182,7 @@ export default function ReportsPage() {
                   onClick={() => setPeriod(p.key)}
                   className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
                     period === p.key
-                      ? "border-primary bg-primary/10 text-primary"
+                      ? "border-primary bg-accent text-primary"
                       : "border-border bg-card text-muted-foreground hover:border-primary/40"
                   }`}
                 >
@@ -201,7 +201,7 @@ export default function ReportsPage() {
                   onClick={() => setShiftFilter(s.key)}
                   className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
                     shiftFilter === s.key
-                      ? "border-primary bg-primary/10 text-primary"
+                      ? "border-primary bg-accent text-primary"
                       : "border-border bg-card text-muted-foreground hover:border-primary/40"
                   }`}
                 >

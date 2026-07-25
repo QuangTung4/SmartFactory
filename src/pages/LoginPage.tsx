@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { Lock, Monitor, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useLocale } from "@/i18n/LocaleContext";
 import {
   DEMO_PASSWORD,
@@ -66,21 +67,21 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-background via-background to-accent/30 relative">
-      <div className="absolute top-4 right-4 md:top-6 md:right-6">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-background relative">
+      <div className="absolute top-4 right-4 md:top-6 md:right-6 flex items-center gap-2">
+        <ThemeSwitcher variant="muted" />
         <LanguageSwitcher variant="muted" />
       </div>
 
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-4">
-            <ShieldCheck className="h-4 w-4" />
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-lg bg-primary text-primary-foreground mb-4 shadow-card">
+            <ShieldCheck className="h-7 w-7" />
+          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">
             {t("app.brand")}
-          </div>
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-success/15 text-success mb-4">
-            <Monitor className="h-7 w-7" />
-          </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-1">
+          </p>
+          <h1 className="text-headline-lg text-foreground mb-1">
             {t("app.controlRoom")}
           </h1>
           <p className="text-sm text-muted-foreground">{t("login.subtitle")}</p>
@@ -88,7 +89,7 @@ const LoginPage = () => {
 
         <form
           onSubmit={onSubmit}
-          className="rounded-2xl border-2 border-border bg-card p-6 md:p-8 shadow-elevated space-y-4"
+          className="rounded-xl border border-border bg-card p-6 md:p-8 shadow-elevated space-y-4"
         >
           <div>
             <label className="text-sm font-semibold text-foreground mb-1.5 block">
@@ -100,7 +101,7 @@ const LoginPage = () => {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
-                className="w-full pl-10 pr-3 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full h-12 pl-10 pr-3 rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
                 placeholder="admin"
               />
             </div>
@@ -117,7 +118,7 @@ const LoginPage = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
-                className="w-full pl-10 pr-3 py-3 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full h-12 pl-10 pr-3 rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
               />
             </div>
           </div>
@@ -139,7 +140,7 @@ const LoginPage = () => {
                     setUsername(a.username);
                     setPassword(DEMO_PASSWORD);
                   }}
-                  className="text-[11px] font-mono px-2 py-1 rounded-md border border-border bg-muted/40 hover:border-primary text-foreground"
+                  className="text-[11px] font-mono px-2 py-1 rounded-md border border-border bg-muted/40 hover:border-primary hover:text-primary text-foreground transition-colors"
                 >
                   {a.username}
                 </button>
