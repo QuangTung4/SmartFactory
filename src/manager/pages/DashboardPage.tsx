@@ -204,13 +204,14 @@ export default function DashboardPage() {
                 {period !== "day" ? ` · ${rangeHint}` : ""}
               </p>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("dashboard.title")}>
               {periods.map((p) => (
                 <button
                   key={p.key}
                   type="button"
                   onClick={() => setPeriod(p.key)}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-md border transition-colors ${
+                  aria-pressed={period === p.key}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-md border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                     period === p.key
                       ? "border-primary bg-accent text-primary"
                       : "border-border bg-card text-muted-foreground hover:border-primary/40"
@@ -222,9 +223,13 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {loading || !stats ? (
+          {loading ? (
             <div className="py-20 text-center text-sm text-muted-foreground">
               {t("ui.loading")}
+            </div>
+          ) : !stats ? (
+            <div className="py-20 text-center text-sm text-muted-foreground">
+              {t("dashboard.noData")}
             </div>
           ) : (
             <>

@@ -25,7 +25,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export type ApiLoginResult = {
   userId: number;
   username: string;
-  userType: "admin" | "tablet";
+  userType: string;
+  permissionTier?: string;
   zoneId: number | null;
   zoneCode: string | null;
   zoneName: string | null;
@@ -67,12 +68,14 @@ export type ApiIncident = {
 export type ApiChatMessage = {
   id: string;
   text: string;
-  sender: "admin" | "tablet" | "system";
+  sender: "admin" | "tablet" | "system" | string;
   senderName: string;
   createdAt: string | null;
   /** Ngôn ngữ lúc soạn tin (vi|en|ko) */
   sourceLang?: "vi" | "en" | "ko" | null;
   translations?: Partial<Record<"vi" | "en" | "ko", string>>;
+  messageType?: "text" | "image" | "system" | string;
+  mediaUrl?: string | null;
 };
 
 export type ApiConversation = {
@@ -224,12 +227,15 @@ export const api = {
 
   managerKpis: () => request<ApiDayKpis>("/api/manager/kpis"),
 
-  managerIncidents: (date?: string) =>
-    request<ApiIncident[]>(
-      date
-        ? `/api/manager/incidents?date=${encodeURIComponent(date)}`
-        : "/api/manager/incidents"
-    ),
+  managerIncidents: (date?: string, userId?: number) => {
+    const q = new URLSearchParams();
+    if (date) q.set("date", date);
+    if (userId) q.set("userId", String(userId));
+    const qs = q.toString();
+    return request<ApiIncident[]>(
+      qs ? `/api/manager/incidents?${qs}` : "/api/manager/incidents"
+    );
+  },
 
   managerReportMachines: (date?: string, shift?: "DAY" | "NIGHT") => {
     const q = new URLSearchParams();
@@ -281,12 +287,37 @@ export const api = {
     incidentId: string | number,
     text: string,
     userId?: number,
-    sourceLang?: "vi" | "en" | "ko"
+    sourceLang?: "vi" | "en" | "ko",
+    opts?: { messageType?: "text" | "image"; mediaUrl?: string }
   ) =>
     request<ApiChatMessage>(`/api/manager/incidents/${incidentId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ text, userId, sourceLang }),
+      body: JSON.stringify({
+        text,
+        userId,
+        sourceLang,
+        messageType: opts?.messageType || "text",
+        mediaUrl: opts?.mediaUrl,
+      }),
     }),
+
+  uploadChatImage: async (file: Blob, filename = "chat.jpg") => {
+    const form = new FormData();
+    form.append("image", file, filename);
+    const res = await fetch(apiUrl("/api/chat/upload"), {
+      method: "POST",
+      body: form,
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      url?: string;
+      mediaUrl?: string;
+    };
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const mediaUrl = data.mediaUrl || data.url;
+    if (!mediaUrl) throw new Error("Upload không trả mediaUrl");
+    return { mediaUrl, url: mediaUrl };
+  },
 
   translateMessage: (messageId: string | number, targetLang: "vi" | "en" | "ko") =>
     request<{

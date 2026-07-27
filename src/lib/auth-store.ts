@@ -1,37 +1,39 @@
 /**
  * Auth — session local; login ưu tiên API (SmartFactoryDB).
- * Username cứng, không email / FullName.
- * UserType: admin | tablet
+ * UserType: manager | ceo (Web). Legacy admin → ceo.
  */
 
 import { api } from "@/lib/api";
 
-export type UserType = "admin" | "tablet";
+export type UserType = "manager" | "ceo" | "worker" | "checker" | "admin" | "tablet";
 
 export type AuthUser = {
   userId: number;
   username: string;
   userType: UserType;
-  /** Zone gợi ý cho tablet (UserZoneAssignments) */
+  permissionTier?: string;
   zoneId?: string;
   zoneName?: string;
 };
 
 const SESSION_KEY = "sf_auth_session_v1";
 
-/** Mật khẩu demo chung */
 export const DEMO_PASSWORD = "123456";
 
 type SeedAccount = AuthUser & { password: string };
 
 const SEED: SeedAccount[] = [
-  { userId: 1, username: "admin", userType: "admin", password: DEMO_PASSWORD },
-  { userId: 2, username: "tablet1", userType: "tablet", zoneId: "BP1", zoneName: "Bộ phận 1", password: DEMO_PASSWORD },
-  { userId: 3, username: "tablet2", userType: "tablet", zoneId: "BP3", zoneName: "Bộ phận 3", password: DEMO_PASSWORD },
-  { userId: 4, username: "tablet3", userType: "tablet", zoneId: "BP5", zoneName: "Bộ phận 5", password: DEMO_PASSWORD },
-  { userId: 5, username: "tablet4", userType: "tablet", zoneId: "BP7", zoneName: "Bộ phận 7", password: DEMO_PASSWORD },
-  { userId: 6, username: "tablet5", userType: "tablet", zoneId: "BP9", zoneName: "Bộ phận 9", password: DEMO_PASSWORD },
+  { userId: 1, username: "ceo", userType: "ceo", password: DEMO_PASSWORD },
+  { userId: 2, username: "manager1", userType: "manager", password: DEMO_PASSWORD },
+  { userId: 3, username: "manager2", userType: "manager", password: DEMO_PASSWORD },
 ];
+
+export function normalizeWebRole(userType: string): "manager" | "ceo" | null {
+  const t = String(userType || "").toLowerCase();
+  if (t === "ceo" || t === "admin") return "ceo";
+  if (t === "manager") return "manager";
+  return null;
+}
 
 export function listSeedUsernames(): { username: string; userType: UserType }[] {
   return SEED.map(({ username, userType }) => ({ username, userType }));
@@ -39,12 +41,6 @@ export function listSeedUsernames(): { username: string; userType: UserType }[] 
 
 function saveSession(session: AuthUser): void {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  if (session.userType === "tablet" && session.zoneId) {
-    localStorage.setItem("zone_id", session.zoneId);
-    localStorage.setItem("zone_name", session.zoneName || session.zoneId);
-    localStorage.setItem("dept_id", session.zoneId);
-    localStorage.setItem("dept_name", session.zoneName || session.zoneId);
-  }
 }
 
 /** Login local (fallback / offline demo) */
@@ -68,10 +64,15 @@ export function login(username: string, password: string): AuthUser | null {
 /** Login qua API → Users trong SmartFactoryDB */
 export async function loginRemote(username: string, password: string): Promise<AuthUser> {
   const row = await api.login(username, password);
+  const webRole = normalizeWebRole(row.userType);
+  if (!webRole) {
+    throw new Error("Tài khoản này dùng app tablet (worker/checker), không dùng Web Manager");
+  }
   const session: AuthUser = {
     userId: row.userId,
     username: row.username,
-    userType: row.userType,
+    userType: webRole,
+    permissionTier: row.permissionTier,
     zoneId: row.zoneCode ?? undefined,
     zoneName: row.zoneName ?? undefined,
   };
@@ -87,7 +88,10 @@ export function getSession(): AuthUser | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as AuthUser;
+    const s = JSON.parse(raw) as AuthUser;
+    const webRole = normalizeWebRole(s.userType);
+    if (!webRole) return s;
+    return { ...s, userType: webRole };
   } catch {
     return null;
   }
@@ -97,5 +101,15 @@ export function requireRole(role: UserType | UserType[]): AuthUser | null {
   const s = getSession();
   if (!s) return null;
   const roles = Array.isArray(role) ? role : [role];
-  return roles.includes(s.userType) ? s : null;
+  const normalized = normalizeWebRole(s.userType) || s.userType;
+  const expanded = roles.flatMap((r) => {
+    if (r === "admin" || r === "ceo") return ["ceo", "admin"] as UserType[];
+    if (r === "manager") return ["manager"] as UserType[];
+    return [r];
+  });
+  return expanded.includes(normalized as UserType) || expanded.includes(s.userType) ? s : null;
+}
+
+export function isCeo(session: AuthUser | null): boolean {
+  return normalizeWebRole(session?.userType || "") === "ceo";
 }

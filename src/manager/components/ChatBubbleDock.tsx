@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ImagePlus,
   Languages,
   MessageCircle,
   Search,
@@ -18,9 +19,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useLocale } from "@/i18n/LocaleContext";
 import { machineLabel, tabletLabel, translateContent, zoneLabel } from "@/i18n/contentLabels";
-import { api, type ApiConversation } from "@/lib/api";
+import { api, apiUrl, type ApiConversation } from "@/lib/api";
 import { getSession } from "@/lib/auth-store";
 import type { ChatMessage } from "@/lib/manager-store";
+import { ImageAnnotator } from "@/manager/components/ImageAnnotator";
+import { ImageLightbox } from "@/manager/components/ImageLightbox";
+import { cn } from "@/lib/utils";
 import {
   emitTypingStart,
   emitTypingStop,
@@ -33,7 +37,6 @@ import {
 } from "@/lib/socket";
 import { registerWebPush } from "@/lib/web-push";
 import type { ChatLang } from "./ChatPanel";
-import { cn } from "@/lib/utils";
 
 type Props = {
   /** Mo phong chat theo incident (vd. bam tu danh sach su co) */
@@ -224,6 +227,10 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   const [activeIncidentId, setActiveIncidentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [annotateUrl, setAnnotateUrl] = useState<string | null>(null);
+  const [viewImageUrl, setViewImageUrl] = useState<string | null>(null);
+  const [sendingImage, setSendingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [translatingId, setTranslatingId] = useState<string | null>(null);
   const [langByMsg, setLangByMsg] = useState<Record<string, ChatLang>>({});
   const [loadingList, setLoadingList] = useState(false);
@@ -390,6 +397,8 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
           createdAt: m.createdAt || new Date().toISOString(),
           sourceLang: m.sourceLang,
           translations: m.translations || {},
+          messageType: m.messageType || "text",
+          mediaUrl: m.mediaUrl || null,
         }))
       );
     } catch (err) {
@@ -399,12 +408,18 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   }, []);
 
   useEffect(() => {
-    joinManagersRoom();
     void registerWebPush();
     const sock = getSocket();
-    const onConnect = () => setSocketOk(true);
+    /** Sau mỗi connect/reconnect phải join lại — Socket.IO xóa room khi disconnect. */
+    const onConnect = () => {
+      setSocketOk(true);
+      joinManagersRoom();
+    };
     const onDisconnect = () => setSocketOk(false);
-    if (sock.connected) setSocketOk(true);
+    if (sock.connected) {
+      setSocketOk(true);
+      joinManagersRoom();
+    }
     sock.on("connect", onConnect);
     sock.on("disconnect", onDisconnect);
 
@@ -428,6 +443,8 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
               createdAt: payload.message!.createdAt || new Date().toISOString(),
               sourceLang: payload.message!.sourceLang as ChatMessage["sourceLang"],
               translations: payload.message!.translations || {},
+              messageType: payload.message!.messageType || "text",
+              mediaUrl: payload.message!.mediaUrl || null,
             },
           ];
         });
@@ -436,6 +453,18 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         } else {
           void loadConversations();
         }
+        return;
+      }
+
+      const fromSelf =
+        !!session?.username &&
+        payload.message.senderName === session.username &&
+        (payload.message.sender === "admin" ||
+          payload.message.sender === session.userType);
+
+      // Tin của chính mình: chỉ refresh list, không hiện preview / tăng unread
+      if (fromSelf) {
+        void loadConversations();
         return;
       }
 
@@ -479,13 +508,22 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
       sock.off("conversation:updated", onConversationUpdated);
       sock.off("incident:resolved", onResolved);
     };
-  }, [loadConversations, loadMessages, session?.userId]);
+  }, [loadConversations, loadMessages, session?.userId, session?.username, session?.userType]);
 
   useEffect(() => {
     if (!headsUp) return;
     const id = window.setTimeout(() => setHeadsUp(null), 5000);
     return () => window.clearTimeout(id);
   }, [headsUp]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -644,6 +682,43 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     }
   };
 
+  const onPickImage = (file: File | null) => {
+    if (!file || chatLocked || !activeIncidentId) return;
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+      toast.error("Chỉ chấp nhận JPEG/PNG/WebP");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setAnnotateUrl(url);
+  };
+
+  const closeAnnotator = () => {
+    if (annotateUrl?.startsWith("blob:")) URL.revokeObjectURL(annotateUrl);
+    setAnnotateUrl(null);
+  };
+
+  const onConfirmImage = async (blob: Blob) => {
+    if (!activeIncidentId || chatLocked) return;
+    closeAnnotator();
+    setSendingImage(true);
+    try {
+      const { mediaUrl } = await api.uploadChatImage(blob, "chat.jpg");
+      await api.sendManagerMessage(
+        activeIncidentId,
+        "[ảnh]",
+        session?.userId,
+        locale as "vi" | "en" | "ko",
+        { messageType: "image", mediaUrl }
+      );
+      await loadMessages(activeIncidentId);
+      await loadConversations();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gửi ảnh thất bại");
+    } finally {
+      setSendingImage(false);
+    }
+  };
+
   const onDraftChange = (value: string) => {
     setDraft(value);
     if (!activeIncidentId || chatLocked) return;
@@ -773,13 +848,14 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         className={cn(
           "fixed z-40 h-touch w-touch rounded-xl shadow-fab touch-none select-none",
           "bg-primary text-primary-foreground flex items-center justify-center",
-          !dragging && "hover:bg-primary-glow active:scale-95 transition-colors",
+          !dragging && "cursor-pointer hover:bg-primary-glow active:scale-95 transition-colors",
           dragging && "cursor-grabbing",
           open && "ring-4 ring-primary/30",
           headsUp && !open && "ring-4 ring-destructive/40"
         )}
         style={{ left: bubblePos.left, top: bubblePos.top, right: "auto", bottom: "auto" }}
         aria-label={t("chat.bubble")}
+        aria-expanded={open}
       >
         {open ? <X className="h-6 w-6 pointer-events-none" /> : <MessageCircle className="h-6 w-6 pointer-events-none" />}
         {!open && (headsUp || unreadTotal > 0) && (
@@ -813,20 +889,22 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                 {active
                   ? [
                       machineLabel(active.deviceCode, locale, active.deviceName),
-                      active.checkedBy ? `KT: ${active.checkedBy}` : null,
+                      active.checkedBy
+                        ? t("chat.checkedBy", { name: active.checkedBy })
+                        : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")
                   : unreadTotal > 0
-                    ? `${unreadTotal} chưa đọc · ${t("chat.openCount", { n: openCount })}`
+                    ? `${t("chat.unreadCount", { n: unreadTotal })} · ${t("chat.openCount", { n: openCount })}`
                     : t("chat.openCount", { n: openCount })}
               </div>
             </div>
             <button
               type="button"
-              className="p-1.5 rounded-lg hover:bg-white/15"
+              className="p-1.5 rounded-lg hover:bg-white/15 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
               onClick={() => setOpen(false)}
-              aria-label="Close"
+              aria-label={t("chat.close")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -959,12 +1037,23 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     const id = String(msg.id);
                     const activeLang = langByMsg[id];
                     const busy = translatingId === id;
+                    const isMine =
+                      msg.sender === "admin" ||
+                      msg.sender === "ceo" ||
+                      msg.sender === "manager";
+                    const isImage =
+                      msg.messageType === "image" && Boolean(msg.mediaUrl);
+                    const mediaSrc = msg.mediaUrl
+                      ? msg.mediaUrl.startsWith("http")
+                        ? msg.mediaUrl
+                        : apiUrl(msg.mediaUrl)
+                      : null;
                     return (
                       <div
                         key={id}
                         className={cn(
                           "flex flex-col",
-                          msg.sender === "admin" ? "items-end" : "items-start"
+                          isMine ? "items-end" : "items-start"
                         )}
                       >
                         <div
@@ -972,7 +1061,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                             "max-w-[90%] rounded-xl px-3 py-2 text-sm shadow-card",
                             msg.sender === "system"
                               ? "bg-muted text-muted-foreground italic w-full text-center"
-                              : msg.sender === "admin"
+                              : isMine
                                 ? "bg-primary text-primary-foreground rounded-br-md"
                                 : "bg-muted/60 border border-border text-foreground rounded-bl-md"
                           )}
@@ -982,11 +1071,26 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                               {msg.senderName}
                             </div>
                           )}
-                          <div className="whitespace-pre-wrap leading-relaxed">
-                            {displayText(msg)}
-                          </div>
+                          {isImage && mediaSrc ? (
+                            <button
+                              type="button"
+                              className="block w-full text-left cursor-zoom-in"
+                              onClick={() => setViewImageUrl(mediaSrc)}
+                              aria-label="Xem ảnh lớn"
+                            >
+                              <img
+                                src={mediaSrc}
+                                alt="Ảnh chat"
+                                className="max-h-52 w-full rounded-lg object-cover"
+                              />
+                            </button>
+                          ) : (
+                            <div className="whitespace-pre-wrap leading-relaxed">
+                              {displayText(msg)}
+                            </div>
+                          )}
                         </div>
-                        {msg.sender !== "system" && (
+                        {msg.sender !== "system" && !isImage && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
@@ -1002,7 +1106,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                                     : t("chat.translate")}
                               </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align={msg.sender === "admin" ? "end" : "start"}>
+                            <DropdownMenuContent align={isMine ? "end" : "start"}>
                               {(["vi", "en", "ko"] as ChatLang[]).map((lang) => (
                                 <DropdownMenuItem
                                   key={lang}
@@ -1049,6 +1153,26 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
               <div className="flex-shrink-0 border-t border-border p-2">
                 <div className="flex gap-1.5">
                   <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      e.target.value = "";
+                      onPickImage(file);
+                    }}
+                  />
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={chatLocked || sendingImage || !activeIncidentId}
+                    aria-label="Gửi ảnh"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                  </Button>
+                  <input
                     value={draft}
                     onChange={(e) => onDraftChange(e.target.value)}
                     onBlur={() => stopTyping(activeIncidentId)}
@@ -1063,6 +1187,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     size="icon"
                     onClick={() => void onSend()}
                     disabled={chatLocked || !draft.trim()}
+                    aria-label={t("chat.send")}
                   >
                     <Send className="h-4 w-4" />
                   </Button>
@@ -1071,6 +1196,28 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
             </>
           )}
         </div>
+      )}
+      {viewImageUrl && !annotateUrl && (
+        <ImageLightbox
+          src={viewImageUrl}
+          onClose={() => setViewImageUrl(null)}
+          editDisabled={chatLocked || sendingImage || !activeIncidentId}
+          onEdit={
+            chatLocked || !activeIncidentId
+              ? undefined
+              : () => {
+                  setAnnotateUrl(viewImageUrl);
+                  setViewImageUrl(null);
+                }
+          }
+        />
+      )}
+      {annotateUrl && (
+        <ImageAnnotator
+          sourceUrl={annotateUrl}
+          onCancel={closeAnnotator}
+          onConfirm={(blob) => void onConfirmImage(blob)}
+        />
       )}
     </>
   );

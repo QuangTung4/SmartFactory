@@ -21,21 +21,21 @@ import { toast } from "sonner";
 const LoginPage = () => {
   const navigate = useNavigate();
   const { t } = useLocale();
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("ceo");
   const [password, setPassword] = useState(DEMO_PASSWORD);
   const [busy, setBusy] = useState(false);
   const adminAccounts = useMemo(
-    () => listSeedUsernames().filter((a) => a.userType === "admin"),
+    () => listSeedUsernames().filter((a) => a.userType === "ceo" || a.userType === "manager"),
     []
   );
 
   useEffect(() => {
     const s = getSession();
-    if (s?.userType === "tablet") logout();
+    if (s?.userType === "worker" || s?.userType === "checker" || s?.userType === "tablet") logout();
   }, []);
 
   const session = getSession();
-  if (session?.userType === "admin") {
+  if (session?.userType === "ceo" || session?.userType === "manager" || session?.userType === "admin") {
     return <Navigate to="/manager" replace />;
   }
 
@@ -46,13 +46,13 @@ const LoginPage = () => {
       let user;
       try {
         user = await loginRemote(username, password);
-      } catch {
+      } catch (remoteErr) {
         user = login(username, password);
-        if (!user) throw new Error(t("login.badCreds"));
+        if (!user) throw remoteErr instanceof Error ? remoteErr : new Error(t("login.badCreds"));
         toast.message(t("login.apiOffline"));
       }
 
-      if (user.userType !== "admin") {
+      if (user.userType !== "ceo" && user.userType !== "manager" && user.userType !== "admin") {
         logout();
         toast.error(t("login.tabletOnly"));
         return;
@@ -92,12 +92,16 @@ const LoginPage = () => {
           className="rounded-xl border border-border bg-card p-6 md:p-8 shadow-elevated space-y-4"
         >
           <div>
-            <label className="text-sm font-semibold text-foreground mb-1.5 block">
+            <label
+              htmlFor="sf-login-username"
+              className="text-sm font-semibold text-foreground mb-1.5 block"
+            >
               {t("login.username")}
             </label>
             <div className="relative">
               <Monitor className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
+                id="sf-login-username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
@@ -108,12 +112,16 @@ const LoginPage = () => {
           </div>
 
           <div>
-            <label className="text-sm font-semibold text-foreground mb-1.5 block">
+            <label
+              htmlFor="sf-login-password"
+              className="text-sm font-semibold text-foreground mb-1.5 block"
+            >
               {t("login.password")}
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
+                id="sf-login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -123,7 +131,13 @@ const LoginPage = () => {
             </div>
           </div>
 
-          <Button type="submit" size="lg" className="w-full h-12 text-base" disabled={busy}>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full h-12 text-base"
+            disabled={busy}
+            aria-busy={busy}
+          >
             {busy ? t("login.submitting") : t("login.submit")}
           </Button>
 
@@ -131,7 +145,7 @@ const LoginPage = () => {
             <div className="text-xs font-semibold text-muted-foreground mb-2">
               {t("login.demoAccounts")}
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("login.demoAccounts")}>
               {adminAccounts.map((a) => (
                 <button
                   key={a.username}
@@ -140,7 +154,7 @@ const LoginPage = () => {
                     setUsername(a.username);
                     setPassword(DEMO_PASSWORD);
                   }}
-                  className="text-[11px] font-mono px-2 py-1 rounded-md border border-border bg-muted/40 hover:border-primary hover:text-primary text-foreground transition-colors"
+                  className="text-[11px] font-mono px-2 py-1 rounded-md border border-border bg-muted/40 hover:border-primary hover:text-primary text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   {a.username}
                 </button>

@@ -35,7 +35,7 @@ const App = () => (
               <Route
                 path="/manager"
                 element={
-                  <RequireAuth role="admin">
+                  <RequireAuth role={["ceo", "manager", "admin"]}>
                     <ManagerLayout />
                   </RequireAuth>
                 }

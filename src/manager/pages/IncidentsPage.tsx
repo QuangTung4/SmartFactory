@@ -3,6 +3,7 @@ import { format, startOfDay } from "date-fns";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { getSession } from "@/lib/auth-store";
 import { useLocale } from "@/i18n/LocaleContext";
 import type { TaskIncidentView } from "@/lib/manager-store";
 import { mapIncident } from "../lib/mappers";
@@ -29,7 +30,7 @@ export default function IncidentsPage() {
 
   const loadCore = useCallback(async () => {
     try {
-      const list = await api.managerIncidents(dateStr);
+      const list = await api.managerIncidents(dateStr, getSession()?.userId);
       const mapped = list.map(mapIncident);
       setIncidents(mapped);
       setApiOk(true);

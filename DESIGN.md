@@ -239,5 +239,6 @@ FAB and open panel use primary + elevated shadow. Incident urgency inside the pa
 - **Don't** hard-code chart hexes (`#22a06b`, `#e5484d`, etc.) — use `chart-ok` / `chart-ng` / `chart-missing`.
 - **Don't** leave sidebar tokens on generic slate that fights industrial blue.
 - **Don't** mix `rounded-2xl` marketing cards with inconsistent chip radii on the same page.
-- **Don't** introduce dark mode in this version.
+- **Do** keep dark mode on the existing token path (`.dark` / Android `DarkSfColors`) — cool industrial ink, same primary blue; no separate “OLED neon” theme.
 - **Don't** use primary blue as large decorative washes behind entire content areas.
+- **Don't** let external design skills replace this document’s palette, type, or anti-patterns.

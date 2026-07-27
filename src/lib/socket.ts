@@ -20,6 +20,8 @@ export type ChatMessagePayload = {
     createdAt?: string | null;
     sourceLang?: string | null;
     translations?: Record<string, string>;
+    messageType?: string;
+    mediaUrl?: string | null;
   } | null;
   preview?: {
     lastMessage?: string;
@@ -74,7 +76,14 @@ export function leaveIncidentRoom(
 }
 
 export function joinManagersRoom() {
-  getSocket().emit("join:managers");
+  const sock = getSocket();
+  if (sock.connected) {
+    sock.emit("join:managers");
+    return;
+  }
+  sock.once("connect", () => {
+    sock.emit("join:managers");
+  });
 }
 
 export function emitTypingStart(

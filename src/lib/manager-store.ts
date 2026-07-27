@@ -26,7 +26,7 @@ export type TaskIncidentView = {
 
 export type ChatMessage = {
   id: string;
-  sender: "admin" | "tablet" | "system";
+  sender: "admin" | "tablet" | "system" | string;
   senderName: string;
   text: string;
   createdAt: string;
@@ -34,6 +34,8 @@ export type ChatMessage = {
   sourceLang?: "vi" | "en" | "ko" | null;
   /** bản dịch cache giả lập (MessageTranslations) */
   translations?: Partial<Record<"vi" | "en" | "ko", string>>;
+  messageType?: "text" | "image" | "system" | string;
+  mediaUrl?: string | null;
 };
 
 const INCIDENT_KEY = "sf_incidents_v1";
