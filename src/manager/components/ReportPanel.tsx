@@ -7,6 +7,7 @@ import { useLocale } from "@/i18n/LocaleContext";
 import { machineLabel, translateContent, zoneLabel } from "@/i18n/contentLabels";
 import type { ApiReportMachine, ApiReportMachinesResponse, ApiReportRangeResponse } from "@/lib/api";
 import { exportPeriodReportToPdf, exportReportToPdf } from "../lib/export-report-pdf";
+import { FilterSelect } from "./ZoneFilterBar";
 
 type FilterKey = "attention" | "unchecked" | "missing" | "ng" | "ok" | "all";
 export type ReportPeriod = "day" | "week" | "month" | "year";
@@ -19,6 +20,8 @@ type Props = {
   periodLabel: string;
   rangeHint?: string;
   shiftLabel: string;
+  /** ALL = mọi bộ phận; ngược lại lọc theo ZoneCode */
+  zoneFilter?: string | "ALL";
   filter: FilterKey;
   onFilterChange: (f: FilterKey) => void;
   onSelectNg: (incidentId: string) => void;
@@ -37,6 +40,12 @@ function matchesFilter(m: ApiReportMachine, filter: FilterKey) {
   return m.reportStatus === filter;
 }
 
+function matchesZone(m: ApiReportMachine, zoneFilter: string | "ALL" | undefined) {
+  if (!zoneFilter || zoneFilter === "ALL") return true;
+  const code = (m.zoneCode || "").toUpperCase();
+  return code === zoneFilter.toUpperCase();
+}
+
 export function ReportPanel({
   report,
   rangeReport,
@@ -44,33 +53,46 @@ export function ReportPanel({
   periodLabel,
   rangeHint,
   shiftLabel,
+  zoneFilter = "ALL",
   filter,
   onFilterChange,
   onSelectNg,
 }: Props) {
   const { t, locale } = useLocale();
   const [exporting, setExporting] = useState(false);
+  const zoneMachines = (report?.machines ?? []).filter((m) => matchesZone(m, zoneFilter));
   const summary = report?.summary;
   const rangeSummary = rangeReport?.summary;
-  const machines = (report?.machines ?? []).filter((m) => matchesFilter(m, filter));
+  const machines = zoneMachines.filter((m) => matchesFilter(m, filter));
   const timeLocale = locale === "ko" ? "ko-KR" : locale === "en" ? "en-US" : "vi-VN";
   const isPeriodExport = period !== "day" && !!rangeReport;
 
-  const filterCounts = rangeSummary
-    ? {
-        unchecked: rangeSummary.unchecked,
-        missing: rangeSummary.missing,
-        ng: rangeSummary.ng,
-        ok: rangeSummary.ok,
-        total: rangeSummary.total,
-      }
-    : {
-        unchecked: summary?.unchecked ?? 0,
-        missing: summary?.missing ?? 0,
-        ng: summary?.ng ?? 0,
-        ok: summary?.ok ?? 0,
-        total: summary?.total ?? 0,
-      };
+  const zoneScopedCounts = {
+    unchecked: zoneMachines.filter((m) => m.reportStatus === "unchecked").length,
+    missing: zoneMachines.filter((m) => m.reportStatus === "missing").length,
+    ng: zoneMachines.filter((m) => m.reportStatus === "ng").length,
+    ok: zoneMachines.filter((m) => m.reportStatus === "ok").length,
+    total: zoneMachines.length,
+  };
+
+  const filterCounts =
+    zoneFilter !== "ALL"
+      ? zoneScopedCounts
+      : rangeSummary
+        ? {
+            unchecked: rangeSummary.unchecked,
+            missing: rangeSummary.missing,
+            ng: rangeSummary.ng,
+            ok: rangeSummary.ok,
+            total: rangeSummary.total,
+          }
+        : {
+            unchecked: summary?.unchecked ?? 0,
+            missing: summary?.missing ?? 0,
+            ng: summary?.ng ?? 0,
+            ok: summary?.ok ?? 0,
+            total: summary?.total ?? 0,
+          };
 
   const filters: { key: FilterKey; label: string; count: number }[] = [
     {
@@ -156,21 +178,17 @@ export function ReportPanel({
             </Button>
           </div>
         </div>
-        <div className="flex flex-wrap gap-1">
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => onFilterChange(f.key)}
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border transition-colors ${
-                filter === f.key
-                  ? "border-primary bg-accent text-primary"
-                  : "border-border bg-card text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              {f.label} · {f.count}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterSelect
+            label={t("report.statusFilter")}
+            value={filter}
+            size="sm"
+            onChange={(v) => onFilterChange(v as FilterKey)}
+            options={filters.map((f) => ({
+              value: f.key,
+              label: `${f.label} · ${f.count}`,
+            }))}
+          />
         </div>
         {period !== "day" && rangeReport && (
           <p className="text-[11px] text-muted-foreground">

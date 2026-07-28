@@ -29,6 +29,7 @@ import {
   rangeForPeriod,
   type ReportPeriodKind,
 } from "../lib/report-period";
+import { FilterSelect } from "../components/ZoneFilterBar";
 
 type Period = ReportPeriodKind;
 
@@ -204,23 +205,12 @@ export default function DashboardPage() {
                 {period !== "day" ? ` · ${rangeHint}` : ""}
               </p>
             </div>
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("dashboard.title")}>
-              {periods.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => setPeriod(p.key)}
-                  aria-pressed={period === p.key}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-md border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                    period === p.key
-                      ? "border-primary bg-accent text-primary"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <FilterSelect
+              label={t("report.period")}
+              value={period}
+              onChange={(v) => setPeriod(v as Period)}
+              options={periods.map((p) => ({ value: p.key, label: p.label }))}
+            />
           </div>
 
           {loading ? (

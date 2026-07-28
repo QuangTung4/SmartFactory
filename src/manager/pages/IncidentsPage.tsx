@@ -10,6 +10,7 @@ import { mapIncident } from "../lib/mappers";
 import { SF_INCIDENTS_REFRESH } from "../ManagerLayout";
 import { DatePickerAside } from "../components/DatePickerAside";
 import { IncidentsPanel } from "../components/IncidentsPanel";
+import { ZoneFilterBar, type ZoneOption } from "../components/ZoneFilterBar";
 
 export default function IncidentsPage() {
   const { t } = useLocale();
@@ -17,16 +18,50 @@ export default function IncidentsPage() {
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [incidents, setIncidents] = useState<TaskIncidentView[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [zoneFilter, setZoneFilter] = useState<string | "ALL">("ALL");
+  const [zones, setZones] = useState<ZoneOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiOk, setApiOk] = useState(true);
 
   const dateStr = useMemo(() => format(anchor, "yyyy-MM-dd"), [anchor]);
   const isToday = dateStr === format(startOfDay(new Date()), "yyyy-MM-dd");
 
+  const zoneOptions = useMemo(() => {
+    if (zones.length) return zones;
+    const map = new Map<string, ZoneOption>();
+    for (const i of incidents) {
+      const code = (i.zoneCode || "").trim();
+      if (!code || map.has(code)) continue;
+      map.set(code, { code, name: i.zoneName });
+    }
+    return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
+  }, [zones, incidents]);
+
+  const visibleIncidents = useMemo(() => {
+    if (zoneFilter === "ALL") return incidents;
+    return incidents.filter(
+      (i) => (i.zoneCode || "").toUpperCase() === zoneFilter.toUpperCase()
+    );
+  }, [incidents, zoneFilter]);
+
   const selected = useMemo(
-    () => incidents.find((i) => i.incidentId === selectedId) ?? incidents[0] ?? null,
-    [incidents, selectedId]
+    () =>
+      visibleIncidents.find((i) => i.incidentId === selectedId) ??
+      visibleIncidents[0] ??
+      null,
+    [visibleIncidents, selectedId]
   );
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await api.zones(getSession()?.userId);
+        setZones(rows.map((z) => ({ code: z.code, name: z.name })));
+      } catch {
+        /* optional */
+      }
+    })();
+  }, []);
 
   const loadCore = useCallback(async () => {
     try {
@@ -88,22 +123,36 @@ export default function IncidentsPage() {
           {t("ui.loading")}
         </div>
       ) : (
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-          <div className="flex-1 min-h-0 min-w-0">
-            <IncidentsPanel
-              incidents={incidents}
-              selectedId={selected?.incidentId ?? null}
-              onSelect={onSelectIncident}
-              sessionDate={dateStr}
+        <div className="flex-1 min-h-0 flex flex-col">
+          {zoneOptions.length > 0 && (
+            <div className="flex-shrink-0 px-4 py-2 border-b border-border bg-card/40">
+              <ZoneFilterBar
+                zones={zoneOptions}
+                value={zoneFilter}
+                onChange={(code) => {
+                  setZoneFilter(code);
+                  setSelectedId(null);
+                }}
+              />
+            </div>
+          )}
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+            <div className="flex-1 min-h-0 min-w-0">
+              <IncidentsPanel
+                incidents={visibleIncidents}
+                selectedId={selected?.incidentId ?? null}
+                onSelect={onSelectIncident}
+                sessionDate={dateStr}
+              />
+            </div>
+            <DatePickerAside
+              title={t("incidents.pickDate")}
+              selected={anchor}
+              onSelect={setAnchor}
+              showTodayLink
+              onToday={() => setAnchor(startOfDay(new Date()))}
             />
           </div>
-          <DatePickerAside
-            title={t("incidents.pickDate")}
-            selected={anchor}
-            onSelect={setAnchor}
-            showTodayLink
-            onToday={() => setAnchor(startOfDay(new Date()))}
-          />
         </div>
       )}
     </div>

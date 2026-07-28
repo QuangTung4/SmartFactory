@@ -15,6 +15,8 @@ import {
 import { DatePickerAside } from "../components/DatePickerAside";
 import { KpiStrip } from "../components/KpiStrip";
 import { ReportPanel, type ReportPeriod } from "../components/ReportPanel";
+import { ZoneFilterBar, type ZoneOption, FilterSelect } from "../components/ZoneFilterBar";
+import { getSession } from "@/lib/auth-store";
 
 export type ReportShiftFilter = "ALL" | "DAY" | "NIGHT";
 
@@ -30,6 +32,8 @@ export default function ReportsPage() {
   const [reportFilter, setReportFilter] = useState<
     "attention" | "unchecked" | "missing" | "ng" | "ok" | "all"
   >("all");
+  const [zoneFilter, setZoneFilter] = useState<string | "ALL">("ALL");
+  const [zones, setZones] = useState<ZoneOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiOk, setApiOk] = useState(true);
 
@@ -130,6 +134,50 @@ export default function ReportsPage() {
   ]);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await api.zones(getSession()?.userId);
+        setZones(rows.map((z) => ({ code: z.code, name: z.name })));
+      } catch {
+        /* zones optional — fallback from machines below */
+      }
+    })();
+  }, []);
+
+  const zoneOptions = useMemo(() => {
+    if (zones.length) return zones;
+    const map = new Map<string, ZoneOption>();
+    for (const m of report?.machines ?? []) {
+      const code = (m.zoneCode || "").trim();
+      if (!code || map.has(code)) continue;
+      map.set(code, { code, name: m.zoneName });
+    }
+    return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
+  }, [zones, report?.machines]);
+
+  const displayKpis = useMemo(() => {
+    if (zoneFilter === "ALL" || !report?.machines?.length) return kpis;
+    const scoped = report.machines.filter(
+      (m) => (m.zoneCode || "").toUpperCase() === zoneFilter.toUpperCase()
+    );
+    const ok = scoped.filter((m) => m.reportStatus === "ok").length;
+    const ng = scoped.filter((m) => m.reportStatus === "ng").length;
+    const missing = scoped.filter((m) => m.reportStatus === "missing").length;
+    const pending = scoped.filter((m) => m.reportStatus === "unchecked").length;
+    const total = scoped.length;
+    const checked = ok + ng;
+    return {
+      ...kpis,
+      total,
+      ok,
+      ng,
+      missing,
+      pending,
+      compliance: total === 0 ? 0 : Math.round((checked / total) * 1000) / 10,
+    };
+  }, [kpis, report?.machines, zoneFilter]);
+
+  useEffect(() => {
     setLoading(true);
     void loadCore();
   }, [loadCore]);
@@ -170,55 +218,35 @@ export default function ReportsPage() {
         </div>
       ) : (
         <>
-          <div className="flex-shrink-0 px-4 py-2 border-b border-border bg-card/40 flex flex-wrap items-center gap-3">
-            <div className="flex flex-wrap gap-1.5 items-center">
-              <span className="text-[11px] font-semibold text-muted-foreground mr-1">
-                {t("report.period")}
-              </span>
-              {periods.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => setPeriod(p.key)}
-                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
-                    period === p.key
-                      ? "border-primary bg-accent text-primary"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-1.5 items-center">
-              <span className="text-[11px] font-semibold text-muted-foreground mr-1">
-                {t("report.shiftFilter")}
-              </span>
-              {shifts.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setShiftFilter(s.key)}
-                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
-                    shiftFilter === s.key
-                      ? "border-primary bg-accent text-primary"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40"
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex-shrink-0 px-4 py-2 border-b border-border bg-card/40 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <FilterSelect
+              label={t("report.period")}
+              value={period}
+              onChange={(v) => setPeriod(v as ReportPeriod)}
+              options={periods.map((p) => ({ value: p.key, label: p.label }))}
+            />
+            <FilterSelect
+              label={t("report.shiftFilter")}
+              value={shiftFilter}
+              onChange={(v) => setShiftFilter(v as ReportShiftFilter)}
+              options={shifts.map((s) => ({ value: s.key, label: s.label }))}
+            />
+            <ZoneFilterBar
+              zones={zoneOptions}
+              value={zoneFilter}
+              onChange={setZoneFilter}
+            />
             <div className="text-[11px] text-muted-foreground ml-auto text-right">
               <div className="font-semibold text-foreground">
                 {periodCode} · {shiftLabelText}
+                {zoneFilter !== "ALL" ? ` · ${zoneFilter}` : ""}
               </div>
               {period !== "day" && (
                 <div className="text-[10px] mt-0.5">{rangeHint}</div>
               )}
             </div>
           </div>
-          <KpiStrip kpis={kpis} compact />
+          <KpiStrip kpis={displayKpis} compact />
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
             <div className="flex-1 min-h-0 min-w-0">
               <ReportPanel
@@ -228,6 +256,7 @@ export default function ReportsPage() {
                 periodLabel={periodCode}
                 rangeHint={rangeHint}
                 shiftLabel={shiftLabelText}
+                zoneFilter={zoneFilter}
                 filter={reportFilter}
                 onFilterChange={setReportFilter}
                 onSelectNg={onSelectNg}

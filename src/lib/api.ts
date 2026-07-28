@@ -80,19 +80,24 @@ export type ApiChatMessage = {
 
 export type ApiConversation = {
   conversationId: string;
-  incidentId: string;
+  conversationKind?: "incident" | "direct" | string;
+  /** Null for direct M↔CEO chats */
+  incidentId: string | null;
   isActive: boolean;
   /** Open room: active + not resolved (server sort key). */
   isOpen?: boolean;
-  incidentStatus: "pending" | "processing" | "resolved";
+  incidentStatus: "pending" | "processing" | "resolved" | "open" | "closed" | string;
   reason: string;
   deviceCode: string;
   deviceName: string;
   zoneId?: string | null;
-  zoneCode: string;
-  zoneName: string;
+  zoneCode: string | null;
+  zoneName: string | null;
   checkedBy: string | null;
+  checkPass?: string | null;
   tabletUsername: string | null;
+  peerUsername?: string | null;
+  peerUserType?: string | null;
   displayName: string;
   lastMessage: string | null;
   lastMessageAt: string | null;
@@ -227,6 +232,11 @@ export const api = {
 
   managerKpis: () => request<ApiDayKpis>("/api/manager/kpis"),
 
+  zones: (userId?: number) => {
+    const q = userId ? `?userId=${userId}` : "";
+    return request<{ id: number; code: string; name: string }[]>(`/api/zones${q}`);
+  },
+
   managerIncidents: (date?: string, userId?: number) => {
     const q = new URLSearchParams();
     if (date) q.set("date", date);
@@ -274,14 +284,26 @@ export const api = {
     return request<ApiConversation[]>(`/api/manager/conversations${q}`);
   },
 
-  markChatRead: (userId: number, incidentId: string | number) =>
+  markChatRead: (
+    userId: number,
+    opts: { incidentId?: string | number; conversationId?: string | number }
+  ) =>
     request<{ ok: boolean }>("/api/chat/mark-read", {
       method: "POST",
-      body: JSON.stringify({ userId, incidentId }),
+      body: JSON.stringify({
+        userId,
+        incidentId: opts.incidentId,
+        conversationId: opts.conversationId,
+      }),
     }),
 
   managerMessages: (incidentId: string | number) =>
     request<ApiChatMessage[]>(`/api/manager/incidents/${incidentId}/messages`),
+
+  conversationMessages: (conversationId: string | number, userId: number) =>
+    request<ApiChatMessage[]>(
+      `/api/manager/conversations/${conversationId}/messages?userId=${encodeURIComponent(String(userId))}`
+    ),
 
   sendManagerMessage: (
     incidentId: string | number,
@@ -299,6 +321,41 @@ export const api = {
         messageType: opts?.messageType || "text",
         mediaUrl: opts?.mediaUrl,
       }),
+    }),
+
+  sendConversationMessage: (
+    conversationId: string | number,
+    text: string,
+    userId: number,
+    sourceLang?: "vi" | "en" | "ko",
+    opts?: { messageType?: "text" | "image"; mediaUrl?: string }
+  ) =>
+    request<ApiChatMessage>(`/api/manager/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        text,
+        userId,
+        sourceLang,
+        messageType: opts?.messageType || "text",
+        mediaUrl: opts?.mediaUrl,
+      }),
+    }),
+
+  directPeers: (userId: number) =>
+    request<Array<{ userId: number; username: string; userType: string }>>(
+      `/api/chat/direct-peers?userId=${encodeURIComponent(String(userId))}`
+    ),
+
+  createDirectChat: (userId: number, peerUserId: number) =>
+    request<{
+      conversationId: string;
+      conversationKind: string;
+      peerUserId: number;
+      peerUsername: string;
+      peerUserType: string;
+    }>("/api/chat/direct", {
+      method: "POST",
+      body: JSON.stringify({ userId, peerUserId }),
     }),
 
   uploadChatImage: async (file: Blob, filename = "chat.jpg") => {

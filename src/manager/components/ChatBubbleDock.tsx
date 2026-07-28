@@ -24,13 +24,17 @@ import { getSession } from "@/lib/auth-store";
 import type { ChatMessage } from "@/lib/manager-store";
 import { ImageAnnotator } from "@/manager/components/ImageAnnotator";
 import { ImageLightbox } from "@/manager/components/ImageLightbox";
+import { ZoneFilterBar, type ZoneOption } from "@/manager/components/ZoneFilterBar";
 import { cn } from "@/lib/utils";
 import {
   emitTypingStart,
   emitTypingStop,
   getSocket,
+  joinConversationRoom,
   joinIncidentRoom,
   joinManagersRoom,
+  joinUserRoom,
+  leaveConversationRoom,
   leaveIncidentRoom,
   type ChatMessagePayload,
   type TypingPayload,
@@ -53,7 +57,7 @@ type PeerTyping = {
 
 type HeadsUp = {
   id: string;
-  incidentId: string;
+  conversationId: string;
   title: string;
   body: string;
 };
@@ -223,8 +227,11 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   const session = getSession();
   const [open, setOpen] = useState(false);
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
+  const [listTab, setListTab] = useState<"incident" | "direct">("incident");
   const [query, setQuery] = useState("");
-  const [activeIncidentId, setActiveIncidentId] = useState<string | null>(null);
+  const [zoneFilter, setZoneFilter] = useState<string | "ALL">("ALL");
+  const [zones, setZones] = useState<ZoneOption[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [annotateUrl, setAnnotateUrl] = useState<string | null>(null);
@@ -237,13 +244,17 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   const [peerTyping, setPeerTyping] = useState<PeerTyping | null>(null);
   const [headsUp, setHeadsUp] = useState<HeadsUp | null>(null);
   const [socketOk, setSocketOk] = useState(false);
+  const [directPeers, setDirectPeers] = useState<
+    Array<{ userId: number; username: string; userType: string }>
+  >([]);
+  const [pickingPeer, setPickingPeer] = useState(false);
   const [bubblePos, setBubblePos] = useState<BubblePos>(() =>
     typeof window !== "undefined" ? loadBubblePos() : { left: FAB_MARGIN, top: FAB_MARGIN }
   );
   const [dragging, setDragging] = useState(false);
   const typingIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingActiveRef = useRef(false);
-  const activeIncidentRef = useRef<string | null>(null);
+  const activeConversationRef = useRef<string | null>(null);
   const openRef = useRef(false);
   const dragRef = useRef<{
     pointerId: number;
@@ -253,8 +264,10 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     origTop: number;
     moved: boolean;
   } | null>(null);
-  activeIncidentRef.current = activeIncidentId;
+  activeConversationRef.current = activeConversationId;
   openRef.current = open;
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
 
   const previewAnchor = useMemo(() => {
     if (typeof window === "undefined") {
@@ -385,27 +398,34 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     }
   }, [t, session?.userId]);
 
-  const loadMessages = useCallback(async (incidentId: string) => {
-    try {
-      const rows = await api.managerMessages(incidentId);
-      setMessages(
-        rows.map((m) => ({
-          id: String(m.id),
-          text: m.text,
-          sender: m.sender,
-          senderName: m.senderName,
-          createdAt: m.createdAt || new Date().toISOString(),
-          sourceLang: m.sourceLang,
-          translations: m.translations || {},
-          messageType: m.messageType || "text",
-          mediaUrl: m.mediaUrl || null,
-        }))
-      );
-    } catch (err) {
-      console.error(err);
-      setMessages([]);
-    }
-  }, []);
+  const loadMessages = useCallback(
+    async (conversationId: string) => {
+      if (!session?.userId) {
+        setMessages([]);
+        return;
+      }
+      try {
+        const rows = await api.conversationMessages(conversationId, session.userId);
+        setMessages(
+          rows.map((m) => ({
+            id: String(m.id),
+            text: m.text,
+            sender: m.sender,
+            senderName: m.senderName,
+            createdAt: m.createdAt || new Date().toISOString(),
+            sourceLang: m.sourceLang,
+            translations: m.translations || {},
+            messageType: m.messageType || "text",
+            mediaUrl: m.mediaUrl || null,
+          }))
+        );
+      } catch (err) {
+        console.error(err);
+        setMessages([]);
+      }
+    },
+    [session?.userId]
+  );
 
   useEffect(() => {
     void registerWebPush();
@@ -414,23 +434,33 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     const onConnect = () => {
       setSocketOk(true);
       joinManagersRoom();
+      if (session?.userId) joinUserRoom(session.userId);
     };
     const onDisconnect = () => setSocketOk(false);
     if (sock.connected) {
       setSocketOk(true);
       joinManagersRoom();
+      if (session?.userId) joinUserRoom(session.userId);
     }
     sock.on("connect", onConnect);
     sock.on("disconnect", onDisconnect);
 
     const onMessageNew = (payload: ChatMessagePayload) => {
-      const incidentId = String(payload.incidentId || "");
-      if (!incidentId || !payload.message) return;
+      const conversationId = String(payload.conversationId || "");
+      const incidentId = payload.incidentId != null ? String(payload.incidentId) : "";
+      if (!payload.message) return;
+      const matchKey =
+        conversationId ||
+        (incidentId
+          ? conversationsRef.current.find((c) => String(c.incidentId) === incidentId)
+              ?.conversationId || ""
+          : "");
 
-      // Chỉ gắn vào thread khi panel đang mở đúng phòng đó
       const viewingThread =
-        openRef.current && activeIncidentRef.current === incidentId;
-      if (viewingThread) {
+        openRef.current &&
+        !!matchKey &&
+        activeConversationRef.current === matchKey;
+      if (viewingThread && matchKey) {
         setMessages((prev) => {
           if (prev.some((m) => String(m.id) === String(payload.message!.id))) return prev;
           return [
@@ -449,7 +479,12 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
           ];
         });
         if (session?.userId) {
-          void api.markChatRead(session.userId, incidentId).then(() => void loadConversations());
+          void api
+            .markChatRead(session.userId, {
+              conversationId: matchKey,
+              incidentId: incidentId || undefined,
+            })
+            .then(() => void loadConversations());
         } else {
           void loadConversations();
         }
@@ -462,25 +497,24 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         (payload.message.sender === "admin" ||
           payload.message.sender === session.userType);
 
-      // Tin của chính mình: chỉ refresh list, không hiện preview / tăng unread
       if (fromSelf) {
         void loadConversations();
         return;
       }
 
-      // Tăng unread ngay trên list (trước khi reload)
-      setConversations((prev) =>
-        prev.map((c) =>
-          String(c.incidentId) === incidentId
-            ? { ...c, unreadCount: (c.unreadCount || 0) + 1 }
-            : c
-        )
-      );
+      if (matchKey) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            String(c.conversationId) === matchKey
+              ? { ...c, unreadCount: (c.unreadCount || 0) + 1 }
+              : c
+          )
+        );
+      }
 
-      // Preview nội dung tin nhắn vài giây (kiểu Messenger) — không chỉ badge số
       setHeadsUp({
         id: `${payload.message.id}-${Date.now()}`,
-        incidentId,
+        conversationId: matchKey || conversationId,
         title: payload.preview?.senderName || payload.message.senderName || "Chat",
         body: payload.preview?.lastMessage || payload.message.text,
       });
@@ -493,8 +527,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
 
     const onResolved = (payload: ChatMessagePayload) => {
       void loadConversations();
-      if (activeIncidentRef.current === String(payload.incidentId)) {
-        void loadMessages(String(payload.incidentId));
+      const cid = payload.conversationId != null ? String(payload.conversationId) : "";
+      if (cid && activeConversationRef.current === cid) {
+        void loadMessages(cid);
       }
     };
 
@@ -508,7 +543,13 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
       sock.off("conversation:updated", onConversationUpdated);
       sock.off("incident:resolved", onResolved);
     };
-  }, [loadConversations, loadMessages, session?.userId, session?.username, session?.userType]);
+  }, [
+    loadConversations,
+    loadMessages,
+    session?.userId,
+    session?.username,
+    session?.userType,
+  ]);
 
   useEffect(() => {
     if (!headsUp) return;
@@ -536,30 +577,50 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   useEffect(() => {
     if (!focusIncidentId) return;
     setOpen(true);
-    setActiveIncidentId(focusIncidentId);
+    setListTab("incident");
+    const hit = conversationsRef.current.find(
+      (c) => String(c.incidentId) === String(focusIncidentId)
+    );
+    if (hit) setActiveConversationId(hit.conversationId);
+    else {
+      // Load then open when list arrives
+      void loadConversations().then(() => {
+        const again = conversationsRef.current.find(
+          (c) => String(c.incidentId) === String(focusIncidentId)
+        );
+        if (again) setActiveConversationId(again.conversationId);
+      });
+    }
     onFocusConsumed?.();
-  }, [focusIncidentId, onFocusConsumed]);
+  }, [focusIncidentId, onFocusConsumed, loadConversations]);
 
   useEffect(() => {
-    if (!open || !activeIncidentId) {
+    if (!open || !activeConversationId) {
       setMessages([]);
       setPeerTyping(null);
       return;
     }
-    void loadMessages(activeIncidentId);
-    joinIncidentRoom(activeIncidentId, typingMeta);
+    void loadMessages(activeConversationId);
+    joinConversationRoom(activeConversationId, { userId: session?.userId ?? null });
+    const activeConv = conversationsRef.current.find(
+      (c) => c.conversationId === activeConversationId
+    );
+    const incidentId = activeConv?.incidentId ? String(activeConv.incidentId) : null;
+    if (incidentId) joinIncidentRoom(incidentId, typingMeta);
 
-    // Đánh dấu đã đọc → badge unread giảm realtime
     if (session?.userId) {
       void api
-        .markChatRead(session.userId, activeIncidentId)
+        .markChatRead(session.userId, {
+          conversationId: activeConversationId,
+          incidentId: incidentId || undefined,
+        })
         .then(() => void loadConversations())
         .catch(() => undefined);
     }
 
     const sock = getSocket();
     const onTyping = (payload: TypingPayload) => {
-      if (String(payload.incidentId) !== String(activeIncidentId)) return;
+      if (!incidentId || String(payload.incidentId) !== String(incidentId)) return;
       if (payload.userId != null && session?.userId != null && payload.userId === session.userId) {
         return;
       }
@@ -584,17 +645,20 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     const pollId =
       socketOk || sock.connected
         ? null
-        : window.setInterval(() => void loadMessages(activeIncidentId), 5000);
+        : window.setInterval(() => void loadMessages(activeConversationId), 5000);
     return () => {
       if (pollId) window.clearInterval(pollId);
       sock.off("typing", onTyping);
-      stopTyping(activeIncidentId);
-      leaveIncidentRoom(activeIncidentId, typingMeta);
+      if (incidentId) {
+        stopTyping(incidentId);
+        leaveIncidentRoom(incidentId, typingMeta);
+      }
+      leaveConversationRoom(activeConversationId);
       setPeerTyping(null);
     };
   }, [
     open,
-    activeIncidentId,
+    activeConversationId,
     loadMessages,
     loadConversations,
     session?.userId,
@@ -616,13 +680,45 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     [conversations]
   );
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await api.zones(session?.userId);
+        setZones(rows.map((z) => ({ code: z.code, name: z.name })));
+      } catch {
+        /* optional */
+      }
+    })();
+  }, [session?.userId]);
+
+  const zoneOptions = useMemo(() => {
+    if (zones.length) return zones;
+    const map = new Map<string, ZoneOption>();
+    for (const c of conversations) {
+      const code = (c.zoneCode || "").trim();
+      if (!code || map.has(code)) continue;
+      map.set(code, { code, name: c.zoneName });
+    }
+    return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
+  }, [zones, conversations]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return conversations;
     return conversations.filter((c) => {
+      const kind = String(c.conversationKind || "incident").toLowerCase();
+      if (listTab === "direct" ? kind !== "direct" : kind === "direct") return false;
+      if (
+        listTab === "incident" &&
+        zoneFilter !== "ALL" &&
+        (c.zoneCode || "").toUpperCase() !== zoneFilter.toUpperCase()
+      ) {
+        return false;
+      }
+      if (!q) return true;
       const hay = [
         c.displayName,
         c.tabletUsername,
+        c.peerUsername,
         c.checkedBy,
         c.deviceCode,
         c.deviceName,
@@ -635,21 +731,37 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [conversations, query]);
+  }, [conversations, query, zoneFilter, listTab]);
 
   const active = useMemo(
-    () => conversations.find((c) => c.incidentId === activeIncidentId) || null,
-    [conversations, activeIncidentId]
+    () => conversations.find((c) => c.conversationId === activeConversationId) || null,
+    [conversations, activeConversationId]
   );
 
-  const chatLocked = active?.incidentStatus === "resolved" || active?.isActive === false;
+  const activeIncidentId = active?.incidentId ? String(active.incidentId) : null;
+  const isDirect = String(active?.conversationKind || "").toLowerCase() === "direct";
+  const chatLocked =
+    active?.incidentStatus === "resolved" ||
+    active?.incidentStatus === "closed" ||
+    active?.isActive === false;
+
+  /** CEO may view worker threads but not write (no W↔CEO). */
+  const canWriteActive = useMemo(() => {
+    if (!active || chatLocked) return false;
+    if (isDirect) return true;
+    const role = session?.userType || "";
+    const pass = String(active.checkPass || "worker").toLowerCase();
+    if (role === "manager") return pass === "worker";
+    if (role === "ceo" || role === "admin") return pass === "checker";
+    return true;
+  }, [active, chatLocked, isDirect, session?.userType]);
 
   useEffect(() => {
-    if (chatLocked) {
+    if (chatLocked || !canWriteActive) {
       stopTyping(activeIncidentId);
       setPeerTyping(null);
     }
-  }, [chatLocked, activeIncidentId, stopTyping]);
+  }, [chatLocked, canWriteActive, activeIncidentId, stopTyping]);
 
   const displayText = (msg: ChatMessage) => {
     const id = String(msg.id);
@@ -663,18 +775,18 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   };
 
   const onSend = async () => {
-    if (!activeIncidentId || !draft.trim() || chatLocked) return;
+    if (!activeConversationId || !session?.userId || !draft.trim() || !canWriteActive) return;
     const text = draft.trim();
     setDraft("");
-    stopTyping(activeIncidentId);
+    if (activeIncidentId) stopTyping(activeIncidentId);
     try {
-      await api.sendManagerMessage(
-        activeIncidentId,
+      await api.sendConversationMessage(
+        activeConversationId,
         text,
-        session?.userId,
+        session.userId,
         locale as "vi" | "en" | "ko"
       );
-      await loadMessages(activeIncidentId);
+      await loadMessages(activeConversationId);
       await loadConversations();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("toast.sendFail"));
@@ -683,7 +795,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   };
 
   const onPickImage = (file: File | null) => {
-    if (!file || chatLocked || !activeIncidentId) return;
+    if (!file || !canWriteActive || !activeConversationId) return;
     if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
       toast.error("Chỉ chấp nhận JPEG/PNG/WebP");
       return;
@@ -698,19 +810,19 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   };
 
   const onConfirmImage = async (blob: Blob) => {
-    if (!activeIncidentId || chatLocked) return;
+    if (!activeConversationId || !session?.userId || !canWriteActive) return;
     closeAnnotator();
     setSendingImage(true);
     try {
       const { mediaUrl } = await api.uploadChatImage(blob, "chat.jpg");
-      await api.sendManagerMessage(
-        activeIncidentId,
+      await api.sendConversationMessage(
+        activeConversationId,
         "[ảnh]",
-        session?.userId,
+        session.userId,
         locale as "vi" | "en" | "ko",
         { messageType: "image", mediaUrl }
       );
-      await loadMessages(activeIncidentId);
+      await loadMessages(activeConversationId);
       await loadConversations();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gửi ảnh thất bại");
@@ -721,12 +833,37 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
 
   const onDraftChange = (value: string) => {
     setDraft(value);
-    if (!activeIncidentId || chatLocked) return;
+    if (!activeIncidentId || !canWriteActive) return;
     if (!value.trim()) {
       stopTyping(activeIncidentId);
       return;
     }
     signalTyping(activeIncidentId);
+  };
+
+  const onStartDirect = async (peerUserId: number) => {
+    if (!session?.userId) return;
+    try {
+      const created = await api.createDirectChat(session.userId, peerUserId);
+      setPickingPeer(false);
+      setListTab("direct");
+      await loadConversations();
+      setActiveConversationId(String(created.conversationId));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("toast.loadFail"));
+    }
+  };
+
+  const openPeerPicker = async () => {
+    if (!session?.userId) return;
+    setPickingPeer(true);
+    try {
+      const peers = await api.directPeers(session.userId);
+      setDirectPeers(peers);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("toast.loadFail"));
+      setPickingPeer(false);
+    }
   };
 
   const onTranslate = async (msg: ChatMessage, lang: ChatLang) => {
@@ -774,12 +911,12 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   };
 
   const onResolve = async () => {
-    if (!activeIncidentId || chatLocked) return;
+    if (!activeIncidentId || chatLocked || isDirect) return;
     try {
       await api.resolveIncident(activeIncidentId);
       toast.success(t("toast.resolved"));
       await loadConversations();
-      await loadMessages(activeIncidentId);
+      if (activeConversationId) await loadMessages(activeConversationId);
       onResolved?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("toast.resolveFail"));
@@ -796,7 +933,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
           type="button"
           onClick={() => {
             setOpen(true);
-            setActiveIncidentId(headsUp.incidentId);
+            if (headsUp.conversationId) setActiveConversationId(headsUp.conversationId);
             setHeadsUp(null);
           }}
           className={cn(
@@ -822,7 +959,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         <button
           type="button"
           onClick={() => {
-            setActiveIncidentId(headsUp.incidentId);
+            if (headsUp.conversationId) setActiveConversationId(headsUp.conversationId);
             setHeadsUp(null);
           }}
           className={cn(
@@ -882,19 +1019,24 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
             <div className="min-w-0">
               <div className="font-bold text-sm truncate">
                 {active
-                  ? `${tabletLabel(active.tabletUsername || active.displayName)} · ${active.deviceCode}`
+                  ? isDirect
+                    ? `${active.peerUsername || active.displayName} · ${t("chat.tabDirect")}`
+                    : `${tabletLabel(active.tabletUsername || active.displayName)} · ${active.deviceCode}`
                   : t("chat.bubbleTitle")}
               </div>
               <div className="text-[11px] opacity-80 truncate">
                 {active
-                  ? [
-                      machineLabel(active.deviceCode, locale, active.deviceName),
-                      active.checkedBy
-                        ? t("chat.checkedBy", { name: active.checkedBy })
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
+                  ? isDirect
+                    ? active.peerUserType || t("chat.tabDirect")
+                    : [
+                        machineLabel(active.deviceCode, locale, active.deviceName),
+                        active.checkedBy
+                          ? t("chat.checkedBy", { name: active.checkedBy })
+                          : null,
+                        active.checkPass === "checker" ? t("chat.badgeChecker") : t("chat.badgeWorker"),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
                   : unreadTotal > 0
                     ? `${t("chat.unreadCount", { n: unreadTotal })} · ${t("chat.openCount", { n: openCount })}`
                     : t("chat.openCount", { n: openCount })}
@@ -910,15 +1052,104 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
             </button>
           </header>
 
-          {!activeIncidentId ? (
+          {!activeConversationId ? (
             <>
-              <div className="flex-shrink-0 p-2 border-b border-border">
+              <div className="flex-shrink-0 p-2 border-b border-border space-y-2">
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListTab("incident");
+                      setPickingPeer(false);
+                    }}
+                    className={cn(
+                      "flex-1 text-xs font-semibold py-1.5 rounded-lg border",
+                      listTab === "incident"
+                        ? "bg-primary/10 text-primary border-primary/30"
+                        : "bg-background text-muted-foreground border-border"
+                    )}
+                  >
+                    {t("chat.tabIncident")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListTab("direct");
+                      setZoneFilter("ALL");
+                    }}
+                    className={cn(
+                      "flex-1 text-xs font-semibold py-1.5 rounded-lg border",
+                      listTab === "direct"
+                        ? "bg-primary/10 text-primary border-primary/30"
+                        : "bg-background text-muted-foreground border-border"
+                    )}
+                  >
+                    {t("chat.tabDirect")}
+                  </button>
+                </div>
+                {listTab === "incident" && zoneOptions.length > 0 && (
+                  <ZoneFilterBar
+                    zones={zoneOptions}
+                    value={zoneFilter}
+                    onChange={setZoneFilter}
+                    size="sm"
+                  />
+                )}
+                {listTab === "direct" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-8 text-xs"
+                    onClick={() => void openPeerPicker()}
+                  >
+                    {t("chat.newDirect")}
+                  </Button>
+                )}
+                {pickingPeer && (
+                  <div className="rounded-xl border border-border bg-muted/40 p-2 space-y-1 max-h-40 overflow-auto">
+                    <div className="flex items-center justify-between px-1 mb-1">
+                      <span className="text-[11px] font-semibold text-muted-foreground">
+                        {t("chat.pickPeer")}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-[11px] text-muted-foreground hover:text-primary"
+                        onClick={() => setPickingPeer(false)}
+                      >
+                        {t("chat.close")}
+                      </button>
+                    </div>
+                    {directPeers.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground text-center py-2">
+                        {t("chat.noPeers")}
+                      </p>
+                    ) : (
+                      directPeers.map((p) => (
+                        <button
+                          key={p.userId}
+                          type="button"
+                          onClick={() => void onStartDirect(p.userId)}
+                          className="w-full text-left rounded-lg px-2 py-1.5 text-sm hover:bg-background border border-transparent hover:border-border"
+                        >
+                          <span className="font-medium">{p.username}</span>
+                          <span className="text-[10px] text-muted-foreground ml-2 uppercase">
+                            {p.userType}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={t("chat.searchPlaceholder")}
+                    placeholder={
+                      listTab === "direct"
+                        ? t("chat.searchDirectPlaceholder")
+                        : t("chat.searchPlaceholder")
+                    }
                     className="w-full pl-8 pr-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
@@ -928,26 +1159,32 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                   {loadingList && conversations.length === 0 && (
                     <p className="text-xs text-muted-foreground text-center py-8">{t("ui.loading")}</p>
                   )}
-                  {!loadingList && conversations.length === 0 && (
+                  {!loadingList && filtered.length === 0 && (
                     <p className="text-xs text-muted-foreground text-center py-8">
-                      {t("chat.noConversations")}
-                    </p>
-                  )}
-                  {conversations.length > 0 && filtered.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-8">
-                      {t("chat.noSearchHit")}
+                      {conversations.length === 0
+                        ? t("chat.noConversations")
+                        : t("chat.noSearchHit")}
                     </p>
                   )}
                   {filtered.map((c) => {
+                    const kind = String(c.conversationKind || "incident").toLowerCase();
+                    const direct = kind === "direct";
                     const openRoom =
-                      c.isOpen === true || (c.isActive && c.incidentStatus !== "resolved");
+                      c.isOpen === true ||
+                      (c.isActive && c.incidentStatus !== "resolved" && c.incidentStatus !== "closed");
                     const activityAt = c.lastActivityAt || c.lastMessageAt;
                     const unread = c.unreadCount || 0;
+                    const statusKey =
+                      c.incidentStatus === "open"
+                        ? "processing"
+                        : c.incidentStatus === "closed"
+                          ? "resolved"
+                          : c.incidentStatus;
                     return (
                       <button
                         key={c.conversationId}
                         type="button"
-                        onClick={() => setActiveIncidentId(c.incidentId)}
+                        onClick={() => setActiveConversationId(c.conversationId)}
                         className={cn(
                           "w-full text-left rounded-xl border bg-background hover:border-primary/50 p-3 transition-colors",
                           unread > 0 ? "border-primary/40" : "border-border"
@@ -955,7 +1192,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="font-semibold text-sm text-foreground truncate">
-                            {tabletLabel(c.tabletUsername || c.displayName)}
+                            {direct
+                              ? c.peerUsername || c.displayName
+                              : tabletLabel(c.tabletUsername || c.displayName)}
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
                             {unread > 0 && (
@@ -971,12 +1210,22 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                                   : "bg-muted text-muted-foreground border-border"
                               )}
                             >
-                              {t(`status.${c.incidentStatus}`)}
+                              {direct
+                                ? openRoom
+                                  ? t("chat.dmOpen")
+                                  : t("chat.dmClosed")
+                                : t(`status.${statusKey}`)}
                             </span>
                           </div>
                         </div>
                         <div className="text-[11px] text-muted-foreground truncate">
-                          {c.deviceCode} · {zoneLabel(c.zoneCode, locale, c.zoneName)}
+                          {direct
+                            ? (c.peerUserType || "DM").toUpperCase()
+                            : `${c.deviceCode} · ${zoneLabel(c.zoneCode || "", locale, c.zoneName || undefined)} · ${
+                                c.checkPass === "checker"
+                                  ? t("chat.badgeChecker")
+                                  : t("chat.badgeWorker")
+                              }`}
                         </div>
                         <div
                           className={cn(
@@ -1008,8 +1257,8 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                 <button
                   type="button"
                   onClick={() => {
-                    stopTyping(activeIncidentId);
-                    setActiveIncidentId(null);
+                    if (activeIncidentId) stopTyping(activeIncidentId);
+                    setActiveConversationId(null);
                     setDraft("");
                     setLangByMsg({});
                     setPeerTyping(null);
@@ -1020,15 +1269,17 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                   {t("chat.backToList")}
                 </button>
                 <div className="flex-1" />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={chatLocked}
-                  onClick={() => void onResolve()}
-                  className="h-7 text-xs"
-                >
-                  {t("chat.resolve")}
-                </Button>
+                {!isDirect && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={chatLocked || !activeIncidentId}
+                    onClick={() => void onResolve()}
+                    className="h-7 text-xs"
+                  >
+                    {t("chat.resolve")}
+                  </Button>
+                )}
               </div>
 
               <ScrollArea className="flex-1 px-3 py-2">
@@ -1040,7 +1291,8 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     const isMine =
                       msg.sender === "admin" ||
                       msg.sender === "ceo" ||
-                      msg.sender === "manager";
+                      msg.sender === "manager" ||
+                      (!!session?.username && msg.senderName === session.username);
                     const isImage =
                       msg.messageType === "image" && Boolean(msg.mediaUrl);
                     const mediaSrc = msg.mediaUrl
@@ -1069,6 +1321,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                           {msg.sender !== "system" && (
                             <div className="text-[10px] font-semibold opacity-70 mb-0.5">
                               {msg.senderName}
+                              {msg.sender && msg.sender !== "system" ? (
+                                <span className="opacity-70"> · {msg.sender}</span>
+                              ) : null}
                             </div>
                           )}
                           {isImage && mediaSrc ? (
@@ -1128,7 +1383,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     );
                   })}
 
-                  {!chatLocked && peerTyping && (
+                  {!chatLocked && canWriteActive && peerTyping && (
                     <div className="flex flex-col items-start">
                       <div className="max-w-[90%] rounded-xl rounded-bl-md px-3 py-2 text-sm shadow-card bg-muted/60 border border-border text-muted-foreground">
                         <div className="text-[10px] font-semibold opacity-70 mb-0.5">
@@ -1145,6 +1400,11 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                   {chatLocked && (
                     <div className="text-center text-[11px] font-medium text-success py-2">
                       {t("chat.locked")}
+                    </div>
+                  )}
+                  {!chatLocked && !canWriteActive && (
+                    <div className="text-center text-[11px] font-medium text-muted-foreground py-2">
+                      {t("chat.readOnly")}
                     </div>
                   )}
                 </div>
@@ -1167,7 +1427,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     size="icon"
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={chatLocked || sendingImage || !activeIncidentId}
+                    disabled={!canWriteActive || sendingImage || !activeConversationId}
                     aria-label="Gửi ảnh"
                   >
                     <ImagePlus className="h-4 w-4" />
@@ -1175,18 +1435,24 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                   <input
                     value={draft}
                     onChange={(e) => onDraftChange(e.target.value)}
-                    onBlur={() => stopTyping(activeIncidentId)}
+                    onBlur={() => activeIncidentId && stopTyping(activeIncidentId)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && void onSend()}
-                    disabled={chatLocked}
+                    disabled={!canWriteActive}
                     placeholder={
-                      chatLocked ? t("chat.lockedPlaceholder") : t("chat.placeholder")
+                      chatLocked
+                        ? t("chat.lockedPlaceholder")
+                        : !canWriteActive
+                          ? t("chat.readOnlyPlaceholder")
+                          : isDirect
+                            ? t("chat.directPlaceholder")
+                            : t("chat.placeholder")
                     }
                     className="flex-1 px-2.5 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
                   />
                   <Button
                     size="icon"
                     onClick={() => void onSend()}
-                    disabled={chatLocked || !draft.trim()}
+                    disabled={!canWriteActive || !draft.trim()}
                     aria-label={t("chat.send")}
                   >
                     <Send className="h-4 w-4" />
@@ -1201,9 +1467,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         <ImageLightbox
           src={viewImageUrl}
           onClose={() => setViewImageUrl(null)}
-          editDisabled={chatLocked || sendingImage || !activeIncidentId}
+          editDisabled={!canWriteActive || sendingImage || !activeConversationId}
           onEdit={
-            chatLocked || !activeIncidentId
+            !canWriteActive || !activeConversationId
               ? undefined
               : () => {
                   setAnnotateUrl(viewImageUrl);

@@ -9,7 +9,7 @@ export type TypingPayload = {
 };
 
 export type ChatMessagePayload = {
-  incidentId: string;
+  incidentId?: string | null;
   conversationId?: string | null;
   zoneId?: string | number | null;
   message?: {
@@ -73,6 +73,29 @@ export function leaveIncidentRoom(
     incidentId: String(incidentId),
     userId: meta.userId ?? null,
   });
+}
+
+export function joinConversationRoom(
+  conversationId: string,
+  meta: { userId?: number | null } = {}
+) {
+  getSocket().emit("join:conversation", {
+    conversationId: String(conversationId),
+    userId: meta.userId ?? null,
+  });
+}
+
+export function leaveConversationRoom(conversationId: string) {
+  getSocket().emit("leave:conversation", {
+    conversationId: String(conversationId),
+  });
+}
+
+export function joinUserRoom(userId: number) {
+  const sock = getSocket();
+  const emit = () => sock.emit("join:user", { userId });
+  if (sock.connected) emit();
+  else sock.once("connect", emit);
 }
 
 export function joinManagersRoom() {
