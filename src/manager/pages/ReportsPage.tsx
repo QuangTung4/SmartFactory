@@ -75,20 +75,26 @@ export default function ReportsPage() {
   );
 
   const loadCore = useCallback(async () => {
+    const userId = getSession()?.userId;
+    if (!userId) {
+      setLoading(false);
+      setApiOk(false);
+      return;
+    }
     try {
       if (period === "day") {
-        const reportData = await api.managerReportMachines(dateStr, apiShift);
+        const reportData = await api.managerReportMachines(dateStr, apiShift, userId);
         setReport(reportData);
         setRangeReport(null);
 
         if (isToday && !apiShift) {
-          const k = await api.managerKpis();
+          const k = await api.managerKpis(userId);
           setKpis(mapKpis(k, locale));
         } else {
           applyDaySummaryToKpis(reportData.summary);
         }
       } else {
-        const rangeData = await api.managerReportRange(fromStr, toStr, apiShift);
+        const rangeData = await api.managerReportRange(fromStr, toStr, apiShift, userId);
         setRangeReport(rangeData);
         const preview =
           [...rangeData.days]

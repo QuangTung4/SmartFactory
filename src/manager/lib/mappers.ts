@@ -37,6 +37,7 @@ export function mapIncident(row: ApiIncident): TaskIncidentView {
     sessionDate: row.sessionDate || "",
     incidentStatus: row.incidentStatus,
     resolvedAt: row.resolvedAt,
+    checkPass: row.checkPass || "worker",
   };
 }
 

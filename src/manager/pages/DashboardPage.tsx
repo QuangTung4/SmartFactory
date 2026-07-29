@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, addMonths, format, startOfDay, startOfMonth } from "date-fns";
+import { Link } from "react-router-dom";
 import {
   Bar,
   BarChart,
@@ -19,9 +20,10 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { api, type ApiDashboardStats } from "@/lib/api";
+import { api, type ApiDashboardStats, type ApiIncident } from "@/lib/api";
+import { getSession } from "@/lib/auth-store";
 import { useLocale } from "@/i18n/LocaleContext";
-import { zoneLabel } from "@/i18n/contentLabels";
+import { machineLabel, zoneLabel } from "@/i18n/contentLabels";
 import { DatePickerAside } from "../components/DatePickerAside";
 import {
   formatPeriodCode,
@@ -33,7 +35,6 @@ import { FilterSelect } from "../components/ZoneFilterBar";
 
 type Period = ReportPeriodKind;
 
-/** Chart series — DESIGN.md chart-ok / chart-ng / chart-missing */
 const STATUS_COLORS = {
   ok: "hsl(var(--chart-ok))",
   ng: "hsl(var(--chart-ng))",
@@ -51,7 +52,6 @@ function rangeWithGrain(period: Period, anchor: Date) {
 function normalizeBucketKey(bucket: string | Date) {
   if (bucket instanceof Date) return format(bucket, "yyyy-MM-dd");
   const s = String(bucket || "");
-  // "2026-07-22" or "2026-07-22T00:00:00.000Z" or "2026-07"
   if (/^\d{4}-\d{2}$/.test(s)) return s;
   return s.slice(0, 10);
 }
@@ -102,9 +102,11 @@ function padSeries(
 
 export default function DashboardPage() {
   const { t, locale } = useLocale();
+  const session = getSession();
   const [period, setPeriod] = useState<Period>("week");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
+  const [alerts, setAlerts] = useState<ApiIncident[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiOk, setApiOk] = useState(true);
 
@@ -116,13 +118,28 @@ export default function DashboardPage() {
   );
 
   const load = useCallback(async () => {
+    if (!session?.userId) {
+      setLoading(false);
+      setApiOk(false);
+      return;
+    }
     try {
-      const data = await api.managerDashboardStats(
-        format(range.from, "yyyy-MM-dd"),
-        format(range.to, "yyyy-MM-dd"),
-        range.grain
-      );
+      const dateIso = format(anchor, "yyyy-MM-dd");
+      const [data, incidents] = await Promise.all([
+        api.managerDashboardStats(
+          format(range.from, "yyyy-MM-dd"),
+          format(range.to, "yyyy-MM-dd"),
+          range.grain,
+          session.userId
+        ),
+        api.managerIncidents(dateIso, session.userId).catch(() => [] as ApiIncident[]),
+      ]);
       setStats(data);
+      setAlerts(
+        incidents.filter(
+          (i) => i.incidentStatus === "pending" || i.incidentStatus === "processing"
+        )
+      );
       setApiOk(true);
     } catch (err) {
       setApiOk(false);
@@ -131,7 +148,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [range.from, range.to, range.grain, t]);
+  }, [range.from, range.to, range.grain, anchor, session?.userId, t]);
 
   useEffect(() => {
     setLoading(true);
@@ -180,6 +197,13 @@ export default function DashboardPage() {
     }));
   }, [stats, locale]);
 
+  const openIncidentCount = useMemo(() => {
+    if (!stats) return alerts.length;
+    return (
+      (stats.incidentsByStatus.pending || 0) + (stats.incidentsByStatus.processing || 0)
+    );
+  }, [stats, alerts.length]);
+
   const periods: { key: Period; label: string }[] = [
     { key: "day", label: t("dashboard.periodDay") },
     { key: "week", label: t("dashboard.periodWeek") },
@@ -223,8 +247,13 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
+                  {
+                    label: t("dashboard.totalMachines"),
+                    value: stats.totals.total,
+                    tone: "border-border bg-card text-foreground",
+                  },
                   {
                     label: "OK",
                     value: stats.totals.ok,
@@ -241,19 +270,60 @@ export default function DashboardPage() {
                     tone: "border-border bg-card text-muted-foreground",
                   },
                   {
-                    label: t("dashboard.compliance"),
-                    value: `${stats.totals.compliance}%`,
+                    label: t("dashboard.openAlerts"),
+                    value: openIncidentCount,
                     tone: "border-primary/30 bg-accent text-primary",
                   },
                 ].map((card) => (
                   <div
                     key={card.label}
-                    className={`rounded-xl border shadow-card p-4 ${card.tone}`}
+                    className={`rounded-xl border shadow-card p-4 transition-shadow hover:shadow-elevated ${card.tone}`}
                   >
                     <div className="text-label-caps uppercase opacity-80">{card.label}</div>
                     <div className="text-kpi font-kpi mt-1.5">{card.value}</div>
                   </div>
                 ))}
+              </div>
+
+              <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <h3 className="text-sm font-semibold">{t("dashboard.alertList")}</h3>
+                  <Link
+                    to="/manager/incidents"
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {t("dashboard.viewAllIncidents")}
+                  </Link>
+                </div>
+                {alerts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    {t("dashboard.noAlerts")}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {alerts.slice(0, 6).map((a) => (
+                      <li key={a.incidentId}>
+                        <Link
+                          to={`/manager/incidents?incident=${encodeURIComponent(String(a.incidentId))}`}
+                          className="flex items-start justify-between gap-3 py-2.5 px-1 rounded-md hover:bg-accent/60 transition-colors"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold truncate">
+                              {a.deviceCode} ·{" "}
+                              {machineLabel(a.deviceCode, locale, a.deviceName)}
+                            </div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {zoneLabel(a.zoneCode, locale, a.zoneName)} · {a.reason || "—"}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold uppercase flex-shrink-0 px-1.5 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary">
+                            {t(`status.${a.incidentStatus}`)}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="rounded-xl border border-border bg-card p-4 shadow-card">
@@ -277,20 +347,8 @@ export default function DashboardPage() {
                     />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Legend />
-                    <Bar
-                      dataKey="ok"
-                      name="OK"
-                      fill={STATUS_COLORS.ok}
-                      radius={[3, 3, 0, 0]}
-                      maxBarSize={28}
-                    />
-                    <Bar
-                      dataKey="ng"
-                      name="NG"
-                      fill={STATUS_COLORS.ng}
-                      radius={[3, 3, 0, 0]}
-                      maxBarSize={28}
-                    />
+                    <Bar dataKey="ok" name="OK" fill={STATUS_COLORS.ok} radius={[3, 3, 0, 0]} maxBarSize={28} />
+                    <Bar dataKey="ng" name="NG" fill={STATUS_COLORS.ng} radius={[3, 3, 0, 0]} maxBarSize={28} />
                     <Bar
                       dataKey="missing"
                       name="MISSING"
@@ -331,7 +389,7 @@ export default function DashboardPage() {
                       <XAxis dataKey="zoneLabel" tickLine={false} axisLine={false} />
                       <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="ok" stackId="a" fill={STATUS_COLORS.ok} radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="ok" stackId="a" fill={STATUS_COLORS.ok} />
                       <Bar dataKey="ng" stackId="a" fill={STATUS_COLORS.ng} />
                       <Bar
                         dataKey="missing"

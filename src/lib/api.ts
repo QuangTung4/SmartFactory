@@ -221,6 +221,27 @@ export type ApiInspectionLogRow = {
   reason: string | null;
 };
 
+export type ApiReportDocument = {
+  documentId: string;
+  fileName: string;
+  storagePath?: string;
+  contentType?: string;
+  byteSize: number;
+  direction: "exported" | "sent" | "received" | string;
+  fromUserId?: number | null;
+  toUserId?: number | null;
+  fromUserType?: string | null;
+  toUserType?: string | null;
+  periodKind?: string | null;
+  periodLabel?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  shiftCode?: string | null;
+  zoneCodes?: string | null;
+  source: string;
+  createdAt: string | null;
+};
+
 export const api = {
   health: () => request<{ ok: boolean; db?: string }>("/api/health"),
 
@@ -230,7 +251,8 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  managerKpis: () => request<ApiDayKpis>("/api/manager/kpis"),
+  managerKpis: (userId: number) =>
+    request<ApiDayKpis>(`/api/manager/kpis?userId=${encodeURIComponent(String(userId))}`),
 
   zones: (userId?: number) => {
     const q = userId ? `?userId=${userId}` : "";
@@ -247,30 +269,37 @@ export const api = {
     );
   },
 
-  managerReportMachines: (date?: string, shift?: "DAY" | "NIGHT") => {
+  managerReportMachines: (date?: string, shift?: "DAY" | "NIGHT", userId?: number) => {
     const q = new URLSearchParams();
     if (date) q.set("date", date);
     if (shift) q.set("shift", shift);
+    if (userId != null) q.set("userId", String(userId));
     const qs = q.toString();
     return request<ApiReportMachinesResponse>(
       qs ? `/api/manager/report-machines?${qs}` : "/api/manager/report-machines"
     );
   },
 
-  managerReportRange: (from: string, to: string, shift?: "DAY" | "NIGHT") => {
+  managerReportRange: (from: string, to: string, shift?: "DAY" | "NIGHT", userId?: number) => {
     const q = new URLSearchParams({ from, to });
     if (shift) q.set("shift", shift);
+    if (userId != null) q.set("userId", String(userId));
     return request<ApiReportRangeResponse>(`/api/manager/report-range?${q.toString()}`);
   },
 
-  managerDashboardStats: (from: string, to: string, grain: "day" | "week" | "month") =>
+  managerDashboardStats: (
+    from: string,
+    to: string,
+    grain: "day" | "week" | "month",
+    userId: number
+  ) =>
     request<ApiDashboardStats>(
-      `/api/manager/dashboard-stats?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&grain=${encodeURIComponent(grain)}`
+      `/api/manager/dashboard-stats?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&grain=${encodeURIComponent(grain)}&userId=${encodeURIComponent(String(userId))}`
     ),
 
-  managerInspectionLog: (from: string, to: string) =>
+  managerInspectionLog: (from: string, to: string, userId: number) =>
     request<ApiInspectionLogRow[]>(
-      `/api/manager/inspection-log?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+      `/api/manager/inspection-log?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&userId=${encodeURIComponent(String(userId))}`
     ),
 
   finalizeShift: () =>
@@ -297,8 +326,10 @@ export const api = {
       }),
     }),
 
-  managerMessages: (incidentId: string | number) =>
-    request<ApiChatMessage[]>(`/api/manager/incidents/${incidentId}/messages`),
+  managerMessages: (incidentId: string | number, userId: number) =>
+    request<ApiChatMessage[]>(
+      `/api/manager/incidents/${incidentId}/messages?userId=${encodeURIComponent(String(userId))}`
+    ),
 
   conversationMessages: (conversationId: string | number, userId: number) =>
     request<ApiChatMessage[]>(
@@ -388,11 +419,96 @@ export const api = {
       body: JSON.stringify({ targetLang }),
     }),
 
-  resolveIncident: (incidentId: string | number) =>
+  resolveIncident: (incidentId: string | number, userId: number) =>
     request<{ ok: boolean }>(`/api/manager/incidents/${incidentId}/resolve`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ userId }),
     }),
+
+  reportDocuments: (userId: number, opts?: { direction?: string; source?: string }) => {
+    const q = new URLSearchParams({ userId: String(userId) });
+    if (opts?.direction) q.set("direction", opts.direction);
+    if (opts?.source) q.set("source", opts.source);
+    return request<ApiReportDocument[]>(`/api/manager/report-documents?${q.toString()}`);
+  },
+
+  saveReportDocument: async (
+    userId: number,
+    file: Blob,
+    meta: {
+      fileName: string;
+      direction?: "exported" | "sent";
+      periodKind?: string;
+      periodLabel?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      shiftCode?: string;
+      zoneCodes?: string;
+      source?: string;
+    }
+  ) => {
+    const form = new FormData();
+    form.append("file", file, meta.fileName);
+    form.append("userId", String(userId));
+    form.append("fileName", meta.fileName);
+    form.append("direction", meta.direction || "exported");
+    form.append("source", meta.source || "manager_report");
+    if (meta.periodKind) form.append("periodKind", meta.periodKind);
+    if (meta.periodLabel) form.append("periodLabel", meta.periodLabel);
+    if (meta.dateFrom) form.append("dateFrom", meta.dateFrom);
+    if (meta.dateTo) form.append("dateTo", meta.dateTo);
+    if (meta.shiftCode) form.append("shiftCode", meta.shiftCode);
+    if (meta.zoneCodes) form.append("zoneCodes", meta.zoneCodes);
+    const res = await fetch(apiUrl("/api/manager/report-documents"), {
+      method: "POST",
+      body: form,
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; documentId?: string };
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  },
+
+  sendReportToCeo: async (
+    userId: number,
+    file: Blob,
+    meta: {
+      fileName: string;
+      periodKind?: string;
+      periodLabel?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      shiftCode?: string;
+      zoneCodes?: string;
+    }
+  ) => {
+    const form = new FormData();
+    form.append("file", file, meta.fileName);
+    form.append("userId", String(userId));
+    form.append("fileName", meta.fileName);
+    form.append("source", "manager_report");
+    if (meta.periodKind) form.append("periodKind", meta.periodKind);
+    if (meta.periodLabel) form.append("periodLabel", meta.periodLabel);
+    if (meta.dateFrom) form.append("dateFrom", meta.dateFrom);
+    if (meta.dateTo) form.append("dateTo", meta.dateTo);
+    if (meta.shiftCode) form.append("shiftCode", meta.shiftCode);
+    if (meta.zoneCodes) form.append("zoneCodes", meta.zoneCodes);
+    const res = await fetch(apiUrl("/api/manager/report-documents/send-to-ceo"), {
+      method: "POST",
+      body: form,
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      sent?: { documentId: string };
+      received?: { documentId: string };
+    };
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  },
+
+  reportDocumentFileUrl: (documentId: string | number, userId: number) =>
+    apiUrl(
+      `/api/manager/report-documents/${documentId}/file?userId=${encodeURIComponent(String(userId))}`
+    ),
 
   pushVapidPublicKey: () =>
     request<{ publicKey: string }>("/api/push/vapid-public-key"),

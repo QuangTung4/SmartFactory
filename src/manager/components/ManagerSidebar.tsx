@@ -2,11 +2,18 @@ import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   AlertTriangle,
+  Columns3,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   ClipboardList,
+  FileStack,
   LayoutDashboard,
+  Package,
   ScrollText,
+  Users,
+  Wrench,
 } from "lucide-react";
 import { useLocale } from "@/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
@@ -15,15 +22,17 @@ import { Button } from "@/components/ui/button";
 const STORAGE_KEY = "manager_sidebar_collapsed";
 
 const items = [
-  { to: "/manager", end: true, icon: LayoutDashboard, labelKey: "nav.dashboard" },
-  { to: "/manager/reports", end: false, icon: ClipboardList, labelKey: "nav.reports" },
-  { to: "/manager/incidents", end: false, icon: AlertTriangle, labelKey: "nav.incidents" },
-  {
-    to: "/manager/inspection-log",
-    end: false,
-    icon: ScrollText,
-    labelKey: "nav.inspectionLog",
-  },
+  { to: "/manager", end: true, icon: LayoutDashboard, labelKey: "nav.dashboard", comingSoon: false },
+  { to: "/manager/devices", end: false, icon: Wrench, labelKey: "nav.devices", comingSoon: true },
+  { to: "/manager/inspections", end: false, icon: ClipboardCheck, labelKey: "nav.inspections", comingSoon: true },
+  { to: "/manager/maintenance", end: false, icon: CalendarClock, labelKey: "nav.maintenance", comingSoon: true },
+  { to: "/manager/reports", end: false, icon: ClipboardList, labelKey: "nav.reports", comingSoon: false },
+  { to: "/manager/library", end: false, icon: FileStack, labelKey: "nav.library", comingSoon: false },
+  { to: "/manager/incidents", end: false, icon: AlertTriangle, labelKey: "nav.incidents", comingSoon: false },
+  { to: "/manager/kanban", end: false, icon: Columns3, labelKey: "nav.kanban", comingSoon: false },
+  { to: "/manager/inspection-log", end: false, icon: ScrollText, labelKey: "nav.inspectionLog", comingSoon: false },
+  { to: "/manager/users", end: false, icon: Users, labelKey: "nav.users", comingSoon: true },
+  { to: "/manager/parts", end: false, icon: Package, labelKey: "nav.parts", comingSoon: true },
 ] as const;
 
 type Props = {
@@ -88,7 +97,14 @@ export function ManagerSidebar({ collapsed, onToggle }: Props) {
               }
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
-              {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
+              {!collapsed && (
+                <span className="truncate flex-1 min-w-0">{t(item.labelKey)}</span>
+              )}
+              {!collapsed && item.comingSoon && (
+                <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  {t("nav.soon")}
+                </span>
+              )}
             </NavLink>
           );
         })}

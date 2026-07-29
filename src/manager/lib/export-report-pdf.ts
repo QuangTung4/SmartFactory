@@ -7,6 +7,23 @@ import type {
 } from "@/lib/api";
 import { machineLabel, shiftLabel, translateContent, zoneLabel } from "@/i18n/contentLabels";
 
+export type ReportStatusFilter =
+  | "attention"
+  | "unchecked"
+  | "missing"
+  | "ng"
+  | "ok"
+  | "all";
+
+export type ReportExportFilters = {
+  zoneFilter?: string | "ALL";
+  statusFilter?: ReportStatusFilter;
+  /** Nhãn hiển thị bộ phận (đã dịch UI) */
+  zoneLabelText?: string;
+  /** Nhãn hiển thị trạng thái (đã dịch UI) */
+  statusLabelText?: string;
+};
+
 /** PDF labels always bilingual VI / KO */
 const L = {
   title: "Báo cáo thiết bị ca / 교대 설비 보고",
@@ -17,10 +34,17 @@ const L = {
   period: "Kỳ / 기간",
   deadline: "Hạn nộp / 마감",
   generatedAt: "Xuất lúc / 생성 시각",
+  filters: "Bộ lọc / 필터",
+  zoneAll: "Tất cả bộ phận / 전체 부서",
+  statusAll: "Tất cả trạng thái / 전체 상태",
   summary: "Chi tiết thiết bị / 설비 상세",
   overview: "Tổng hợp kỳ / 기간 요약",
   byDay: "Theo ngày / 일별",
   byZone: "Theo bộ phận / 부서별",
+  charts: "Biểu đồ / 차트",
+  chartStatus: "Phân bố trạng thái / 상태 분포",
+  chartPareto: "Pareto NG theo bộ phận / 부서별 NG 파레토",
+  chartByDay: "Xu hướng theo ngày / 일별 추이",
   compliance: "Compliance / 준수율",
   legendUnchecked: "Hàng nền cam = Chưa kiểm tra / 주황색 행 = 미점검 (cần theo dõi)",
   total: "Tất cả / 전체",
@@ -58,7 +82,138 @@ const L = {
   noteUnchecked: "Chưa được kiểm tra trong ca — cần theo dõi kịp thời.\n이번 교대 미점검 — 적시 추적 필요.",
   noteMissing: "Đã quá hạn nộp báo cáo.\n보고 마감 지남.",
   noteOk: "—",
+  emptyChart: "Không có dữ liệu biểu đồ / 차트 데이터 없음",
 };
+
+type StatusCounts = {
+  total: number;
+  ok: number;
+  ng: number;
+  missing: number;
+  unchecked: number;
+};
+
+function matchStatus(m: ApiReportMachine, filter: ReportStatusFilter = "all") {
+  if (filter === "all") return true;
+  if (filter === "attention") {
+    return m.reportStatus === "unchecked" || m.reportStatus === "missing";
+  }
+  return m.reportStatus === filter;
+}
+
+function matchZone(m: ApiReportMachine, zoneFilter: string | "ALL" = "ALL") {
+  if (!zoneFilter || zoneFilter === "ALL") return true;
+  return (m.zoneCode || "").toUpperCase() === zoneFilter.toUpperCase();
+}
+
+function countStatuses(machines: ApiReportMachine[]): StatusCounts {
+  return {
+    total: machines.length,
+    ok: machines.filter((m) => m.reportStatus === "ok").length,
+    ng: machines.filter((m) => m.reportStatus === "ng").length,
+    missing: machines.filter((m) => m.reportStatus === "missing").length,
+    unchecked: machines.filter((m) => m.reportStatus === "unchecked").length,
+  };
+}
+
+function filterMachines(
+  machines: ApiReportMachine[],
+  filters?: ReportExportFilters
+): ApiReportMachine[] {
+  const zone = filters?.zoneFilter ?? "ALL";
+  const status = filters?.statusFilter ?? "all";
+  return machines.filter((m) => matchZone(m, zone) && matchStatus(m, status));
+}
+
+function applyFiltersToDayReport(
+  report: ApiReportMachinesResponse,
+  filters?: ReportExportFilters
+): ApiReportMachinesResponse {
+  const machines = filterMachines(report.machines, filters);
+  const counts = countStatuses(machines);
+  return {
+    summary: { ...report.summary, ...counts },
+    machines,
+  };
+}
+
+function applyFiltersToRangeReport(
+  data: ApiReportRangeResponse,
+  filters?: ReportExportFilters
+): ApiReportRangeResponse {
+  const days = data.days.map((d) => applyFiltersToDayReport(d, filters));
+  const allMachines = days.flatMap((d) => d.machines);
+  const counts = countStatuses(allMachines);
+  const checked = counts.ok + counts.ng;
+  const compliance =
+    counts.total === 0 ? 0 : Math.round((checked / counts.total) * 1000) / 10;
+
+  const byDay = days.map((d) => ({
+    date: d.summary.sessionDate,
+    ok: d.summary.ok,
+    ng: d.summary.ng,
+    missing: d.summary.missing,
+    unchecked: d.summary.unchecked,
+    shiftCode: d.summary.shiftCode,
+  }));
+
+  const zoneMap = new Map<
+    string,
+    {
+      zoneCode: string;
+      zoneName: string;
+      ok: number;
+      ng: number;
+      missing: number;
+      unchecked: number;
+      total: number;
+    }
+  >();
+  for (const m of allMachines) {
+    const code = (m.zoneCode || m.zoneName || "—").trim() || "—";
+    const cur = zoneMap.get(code) ?? {
+      zoneCode: m.zoneCode || code,
+      zoneName: m.zoneName || code,
+      ok: 0,
+      ng: 0,
+      missing: 0,
+      unchecked: 0,
+      total: 0,
+    };
+    cur.total += 1;
+    if (m.reportStatus === "ok") cur.ok += 1;
+    else if (m.reportStatus === "ng") cur.ng += 1;
+    else if (m.reportStatus === "missing") cur.missing += 1;
+    else cur.unchecked += 1;
+    zoneMap.set(code, cur);
+  }
+
+  return {
+    summary: {
+      ...data.summary,
+      ...counts,
+      compliance,
+      dayCount: byDay.length,
+    },
+    byDay,
+    byZone: [...zoneMap.values()].sort((a, b) => a.zoneCode.localeCompare(b.zoneCode)),
+    days,
+  };
+}
+
+function filtersCaption(filters?: ReportExportFilters): string {
+  const zone =
+    filters?.zoneLabelText ||
+    (filters?.zoneFilter && filters.zoneFilter !== "ALL"
+      ? filters.zoneFilter
+      : L.zoneAll);
+  const status =
+    filters?.statusLabelText ||
+    (filters?.statusFilter && filters.statusFilter !== "all"
+      ? filters.statusFilter.toUpperCase()
+      : L.statusAll);
+  return `${L.filters}: ${zone} · ${status}`;
+}
 
 const CANVAS_SCALE = 2;
 const ORPHAN_CANVAS_PX = 48;
@@ -118,6 +273,131 @@ function statBox(label: string, value: number | string, color = "#111") {
     <div style="font-size:9px;color:#6b7280;white-space:pre-line;">${escapeHtml(label)}</div>
     <div style="font-size:16px;font-weight:700;color:${color};">${value}</div>
   </div>`;
+}
+
+function hBarRow(label: string, value: number, max: number, color: string) {
+  const pct = max <= 0 ? 0 : Math.round((value / max) * 1000) / 10;
+  return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;">
+    <div style="width:118px;font-size:10px;color:#374151;flex-shrink:0;white-space:pre-line;line-height:1.2;">${escapeHtml(label)}</div>
+    <div style="flex:1;background:#f3f4f6;height:14px;border-radius:4px;overflow:hidden;min-width:80px;">
+      <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;"></div>
+    </div>
+    <div style="width:42px;text-align:right;font-weight:700;font-size:12px;color:${color};flex-shrink:0;">${value}</div>
+  </div>`;
+}
+
+function statusChartHtml(counts: StatusCounts): string {
+  const rows: { label: string; value: number; color: string }[] = [
+    { label: L.ok, value: counts.ok, color: "#15803d" },
+    { label: L.ng, value: counts.ng, color: "#dc2626" },
+    { label: L.missing, value: counts.missing, color: "#4b5563" },
+    { label: L.unchecked, value: counts.unchecked, color: "#c2410c" },
+  ].filter((r) => r.value > 0);
+  const max = Math.max(1, ...rows.map((r) => r.value), counts.total);
+  const body =
+    rows.length === 0
+      ? `<div style="color:#6b7280;font-size:10px;padding:8px 0;">${escapeHtml(L.emptyChart)}</div>`
+      : rows.map((r) => hBarRow(r.label, r.value, max, r.color)).join("");
+  return `<div class="pdf-block" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin:8px 0;background:#fafafa;">
+    <div style="font-weight:700;margin-bottom:6px;font-size:12px;">${escapeHtml(L.chartStatus)}</div>
+    ${body}
+  </div>`;
+}
+
+function paretoChartHtml(
+  byZone: ApiReportRangeResponse["byZone"] | Array<{ zoneCode: string; zoneName: string; ng: number }>
+): string {
+  const ranked = [...byZone]
+    .map((z) => ({
+      ...z,
+      ng: Number(z.ng) || 0,
+      labelVi: zoneLabel(z.zoneCode || z.zoneName, "vi", z.zoneName),
+      labelKo: zoneLabel(z.zoneCode || z.zoneName, "ko", z.zoneName),
+    }))
+    .sort((a, b) => b.ng - a.ng)
+    .filter((z) => z.ng > 0)
+    .slice(0, 12);
+  const maxNg = Math.max(1, ...ranked.map((z) => z.ng));
+  const body =
+    ranked.length === 0
+      ? `<div style="color:#6b7280;font-size:10px;padding:8px 0;">${escapeHtml(L.emptyChart)}</div>`
+      : ranked
+          .map((z) => hBarRow(bi(z.labelVi, z.labelKo), z.ng, maxNg, "#dc2626"))
+          .join("");
+  return `<div class="pdf-block" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin:8px 0;background:#fafafa;">
+    <div style="font-weight:700;margin-bottom:6px;font-size:12px;">${escapeHtml(L.chartPareto)}</div>
+    ${body}
+  </div>`;
+}
+
+function byDayChartHtml(byDay: ApiReportRangeResponse["byDay"]): string {
+  if (!byDay.length) {
+    return `<div class="pdf-block" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin:8px 0;">
+      <div style="font-weight:700;margin-bottom:6px;font-size:12px;">${escapeHtml(L.chartByDay)}</div>
+      <div style="color:#6b7280;font-size:10px;">${escapeHtml(L.emptyChart)}</div>
+    </div>`;
+  }
+
+  const totals = byDay.map(
+    (d) => (Number(d.ok) || 0) + (Number(d.ng) || 0) + (Number(d.missing) || 0) + (Number(d.unchecked) || 0)
+  );
+  const maxTotal = Math.max(1, ...totals);
+  const chartH = 110;
+  const showEvery = byDay.length > 16 ? Math.ceil(byDay.length / 12) : 1;
+
+  const cols = byDay
+    .map((d, i) => {
+      const ok = Number(d.ok) || 0;
+      const ng = Number(d.ng) || 0;
+      const missing = Number(d.missing) || 0;
+      const unchecked = Number(d.unchecked) || 0;
+      const total = ok + ng + missing + unchecked;
+      const scale = total / maxTotal;
+      const hOk = Math.round((ok / maxTotal) * chartH);
+      const hNg = Math.round((ng / maxTotal) * chartH);
+      const hMissing = Math.round((missing / maxTotal) * chartH);
+      const hUnchecked = Math.round((unchecked / maxTotal) * chartH);
+      const label =
+        d.date.length >= 10 ? d.date.slice(5) : d.date;
+      const showLabel = i % showEvery === 0 || i === byDay.length - 1;
+      return `<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:${chartH + 22}px;">
+        <div style="width:86%;max-width:28px;display:flex;flex-direction:column-reverse;justify-content:flex-start;height:${chartH}px;opacity:${scale > 0 ? 1 : 0.35};">
+          <div style="height:${hOk}px;background:#15803d;width:100%;" title="OK"></div>
+          <div style="height:${hNg}px;background:#dc2626;width:100%;" title="NG"></div>
+          <div style="height:${hMissing}px;background:#6b7280;width:100%;" title="MISSING"></div>
+          <div style="height:${hUnchecked}px;background:#ea580c;width:100%;" title="UNCHECKED"></div>
+        </div>
+        <div style="font-size:7px;color:#6b7280;margin-top:3px;transform:rotate(-35deg);white-space:nowrap;height:14px;">${showLabel ? escapeHtml(label) : ""}</div>
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="pdf-block" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin:8px 0;background:#fafafa;">
+    <div style="font-weight:700;margin-bottom:4px;font-size:12px;">${escapeHtml(L.chartByDay)}</div>
+    <div style="display:flex;gap:8px;font-size:9px;color:#6b7280;margin-bottom:6px;flex-wrap:wrap;">
+      <span><span style="display:inline-block;width:8px;height:8px;background:#15803d;margin-right:3px;"></span>OK</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:#dc2626;margin-right:3px;"></span>NG</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:#6b7280;margin-right:3px;"></span>${escapeHtml(L.missing)}</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:#ea580c;margin-right:3px;"></span>${escapeHtml(L.unchecked)}</span>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:2px;width:100%;min-height:${chartH + 22}px;">${cols}</div>
+  </div>`;
+}
+
+function zoneBreakdownFromMachines(machines: ApiReportMachine[]) {
+  const map = new Map<string, { zoneCode: string; zoneName: string; ng: number }>();
+  for (const m of machines) {
+    if (m.reportStatus !== "ng") continue;
+    const code = (m.zoneCode || m.zoneName || "—").trim() || "—";
+    const cur = map.get(code) ?? {
+      zoneCode: m.zoneCode || code,
+      zoneName: m.zoneName || code,
+      ng: 0,
+    };
+    cur.ng += 1;
+    map.set(code, cur);
+  }
+  return [...map.values()];
 }
 
 /** Ô bảng: căn giữa dọc, không tràn sang cột khác */
@@ -194,11 +474,22 @@ function shiftTextFor(summary: ApiReportMachinesResponse["summary"]): string {
   );
 }
 
-/** Khối đầu ngày: tiêu đề + KPI + nhãn chi tiết (keep-together với đầu bảng). */
-function buildDayHeadElement(report: ApiReportMachinesResponse): HTMLDivElement {
-  const { summary } = report;
+/** Khối đầu ngày: tiêu đề + KPI + biểu đồ + nhãn chi tiết (keep-together với đầu bảng). */
+function buildDayHeadElement(
+  report: ApiReportMachinesResponse,
+  filters?: ReportExportFilters
+): HTMLDivElement {
+  const { summary, machines } = report;
   const root = offscreenRoot();
   const shiftText = shiftTextFor(summary);
+  const counts: StatusCounts = {
+    total: summary.total,
+    ok: summary.ok,
+    ng: summary.ng,
+    missing: summary.missing,
+    unchecked: summary.unchecked,
+  };
+  const paretoZones = zoneBreakdownFromMachines(machines);
   root.innerHTML = `
     <div class="pdf-block" style="margin-bottom:8px;border-bottom:2px solid #1d4ed8;padding-bottom:6px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:2px;">SmartFactory · ${escapeHtml(L.title)}</div>
@@ -209,6 +500,7 @@ function buildDayHeadElement(report: ApiReportMachinesResponse): HTMLDivElement 
           ? `<div style="color:#374151;margin-top:1px;">${escapeHtml(L.deadline)}: ${escapeHtml(summary.formDeadlineTime)}</div>`
           : ""
       }
+      <div style="color:#1e3a5f;margin-top:3px;font-size:10px;font-weight:600;">${escapeHtml(filtersCaption(filters))}</div>
       <div style="color:#6b7280;margin-top:2px;font-size:10px;">${escapeHtml(L.generatedAt)}: ${new Date().toLocaleString("vi-VN")}</div>
       <div style="margin-top:4px;color:#c2410c;font-weight:600;font-size:10px;">${escapeHtml(L.legendUnchecked)}</div>
     </div>
@@ -219,7 +511,10 @@ function buildDayHeadElement(report: ApiReportMachinesResponse): HTMLDivElement 
       ${statBox(L.missing, summary.missing, "#4b5563")}
       ${statBox(L.unchecked, summary.unchecked, "#c2410c")}
     </div>
-    <div class="pdf-block" style="font-weight:700;margin:0;">${escapeHtml(L.summary)}</div>
+    <div class="pdf-block" style="font-weight:700;margin:4px 0 2px;font-size:12px;">${escapeHtml(L.charts)}</div>
+    ${statusChartHtml(counts)}
+    ${paretoZones.length > 0 ? paretoChartHtml(paretoZones) : ""}
+    <div class="pdf-block" style="font-weight:700;margin:8px 0 0;">${escapeHtml(L.summary)}</div>
   `;
   return root;
 }
@@ -267,11 +562,19 @@ function buildPeriodOverviewElement(
   data: ApiReportRangeResponse,
   periodLabel: string,
   shiftLabelText: string,
-  rangeHint?: string
+  rangeHint?: string,
+  filters?: ReportExportFilters
 ): HTMLDivElement {
   const { summary, byDay, byZone } = data;
   const root = offscreenRoot();
   const rangeText = rangeHint || `${summary.from} → ${summary.to}`;
+  const counts: StatusCounts = {
+    total: summary.total,
+    ok: summary.ok,
+    ng: summary.ng,
+    missing: summary.missing,
+    unchecked: summary.unchecked,
+  };
 
   const dayRows = byDay
     .map(
@@ -307,6 +610,7 @@ function buildPeriodOverviewElement(
       <div style="color:#1d4ed8;font-size:10px;font-weight:600;">${escapeHtml(L.bilingual)}</div>
       <div style="color:#374151;margin-top:4px;">${escapeHtml(L.period)}: ${escapeHtml(periodLabel)} · ${escapeHtml(rangeText)}</div>
       <div style="color:#374151;margin-top:1px;">${escapeHtml(L.shift)}: ${escapeHtml(shiftLabelText)}</div>
+      <div style="color:#1e3a5f;margin-top:3px;font-size:10px;font-weight:600;">${escapeHtml(filtersCaption(filters))}</div>
       <div style="color:#6b7280;margin-top:2px;font-size:10px;">${escapeHtml(L.generatedAt)}: ${new Date().toLocaleString("vi-VN")}</div>
     </div>
     <div class="pdf-block" style="font-weight:700;margin:4px 0 8px;">${escapeHtml(L.overview)}</div>
@@ -318,6 +622,10 @@ function buildPeriodOverviewElement(
       ${statBox(L.unchecked, summary.unchecked, "#c2410c")}
       ${statBox(L.compliance, `${summary.compliance}%`, "#1d4ed8")}
     </div>
+    <div class="pdf-block" style="font-weight:700;margin:8px 0 2px;font-size:12px;">${escapeHtml(L.charts)}</div>
+    ${statusChartHtml(counts)}
+    ${byDayChartHtml(byDay)}
+    ${paretoChartHtml(byZone)}
     <div class="pdf-block" style="font-weight:700;margin:10px 0 8px;">${escapeHtml(L.byDay)}</div>
     <table class="pdf-block" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:4px;">
       <colgroup>
@@ -620,9 +928,10 @@ async function paintMachineTable(
 async function appendDayReport(
   layout: PdfLayout,
   report: ApiReportMachinesResponse,
-  preferContinue: boolean
+  preferContinue: boolean,
+  filters?: ReportExportFilters
 ): Promise<void> {
-  const headEl = buildDayHeadElement(report);
+  const headEl = buildDayHeadElement(report, filters);
   const tableEl = buildDayTableElement(report);
   const contEl = buildContinuationHeaderElement(report);
 
@@ -642,40 +951,63 @@ async function appendOverview(
   layout.cursorY += 2;
 }
 
-export async function exportReportToPdf(report: ApiReportMachinesResponse): Promise<string> {
+export async function exportReportToPdf(
+  report: ApiReportMachinesResponse,
+  filters?: ReportExportFilters
+): Promise<{ filename: string; blob: Blob }> {
+  const filtered = applyFiltersToDayReport(report, filters);
   const layout = createPdfLayout();
-  await appendDayReport(layout, report, false);
-  const filename = `SmartFactory-Report-VI-KO-${report.summary.sessionDate}-${report.summary.shiftCode || "ALL"}.pdf`;
+  await appendDayReport(layout, filtered, false, filters);
+  const zoneTag =
+    filters?.zoneFilter && filters.zoneFilter !== "ALL" ? `-${filters.zoneFilter}` : "";
+  const statusTag =
+    filters?.statusFilter && filters.statusFilter !== "all" ? `-${filters.statusFilter}` : "";
+  const filename = `SmartFactory-Report-VI-KO-${filtered.summary.sessionDate}-${filtered.summary.shiftCode || "ALL"}${zoneTag}${statusTag}.pdf`;
+  const blob = layout.pdf.output("blob");
   layout.pdf.save(filename);
-  return filename;
+  return { filename, blob };
 }
 
 export type PeriodExportMeta = {
   periodLabel: string;
   rangeHint?: string;
   shiftLabel: string;
+  filters?: ReportExportFilters;
 };
 
 export async function exportPeriodReportToPdf(
   data: ApiReportRangeResponse,
   meta: PeriodExportMeta
-): Promise<string> {
+): Promise<{ filename: string; blob: Blob }> {
+  const filtered = applyFiltersToRangeReport(data, meta.filters);
   const layout = createPdfLayout();
   const overview = buildPeriodOverviewElement(
-    data,
+    filtered,
     meta.periodLabel,
     meta.shiftLabel,
-    meta.rangeHint
+    meta.rangeHint,
+    meta.filters
   );
   await appendOverview(layout, overview);
 
-  for (const day of data.days) {
-    await appendDayReport(layout, day, true);
+  for (const day of filtered.days) {
+    // Skip empty days when a narrow status/zone filter removed all machines
+    if (day.machines.length === 0) continue;
+    await appendDayReport(layout, day, true, meta.filters);
   }
 
-  const shiftTag = data.summary.shift || "ALL";
+  const shiftTag = filtered.summary.shift || "ALL";
   const codeFile = meta.periodLabel.replace(/\//g, "_");
-  const filename = `SmartFactory-Report-VI-KO-${codeFile}-${shiftTag}.pdf`;
+  const zoneTag =
+    meta.filters?.zoneFilter && meta.filters.zoneFilter !== "ALL"
+      ? `-${meta.filters.zoneFilter}`
+      : "";
+  const statusTag =
+    meta.filters?.statusFilter && meta.filters.statusFilter !== "all"
+      ? `-${meta.filters.statusFilter}`
+      : "";
+  const filename = `SmartFactory-Report-VI-KO-${codeFile}-${shiftTag}${zoneTag}${statusTag}.pdf`;
+  const blob = layout.pdf.output("blob");
   layout.pdf.save(filename);
-  return filename;
+  return { filename, blob };
 }

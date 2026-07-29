@@ -10,15 +10,20 @@ import { mapIncident } from "../lib/mappers";
 import { SF_INCIDENTS_REFRESH } from "../ManagerLayout";
 import { DatePickerAside } from "../components/DatePickerAside";
 import { IncidentsPanel } from "../components/IncidentsPanel";
-import { ZoneFilterBar, type ZoneOption } from "../components/ZoneFilterBar";
+import { ZoneFilterBar, FilterSelect, type ZoneOption } from "../components/ZoneFilterBar";
+
+type PassFilter = "ALL" | "worker" | "checker";
 
 export default function IncidentsPage() {
   const { t } = useLocale();
+  const session = getSession();
+  const isCeoLike = session?.userType === "ceo" || session?.userType === "admin";
   const [searchParams, setSearchParams] = useSearchParams();
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [incidents, setIncidents] = useState<TaskIncidentView[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoneFilter, setZoneFilter] = useState<string | "ALL">("ALL");
+  const [passFilter, setPassFilter] = useState<PassFilter>(isCeoLike ? "checker" : "ALL");
   const [zones, setZones] = useState<ZoneOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiOk, setApiOk] = useState(true);
@@ -38,11 +43,20 @@ export default function IncidentsPage() {
   }, [zones, incidents]);
 
   const visibleIncidents = useMemo(() => {
-    if (zoneFilter === "ALL") return incidents;
-    return incidents.filter(
-      (i) => (i.zoneCode || "").toUpperCase() === zoneFilter.toUpperCase()
-    );
-  }, [incidents, zoneFilter]);
+    return incidents.filter((i) => {
+      if (
+        zoneFilter !== "ALL" &&
+        (i.zoneCode || "").toUpperCase() !== zoneFilter.toUpperCase()
+      ) {
+        return false;
+      }
+      if (isCeoLike && passFilter !== "ALL") {
+        const pass = String(i.checkPass || "worker").toLowerCase();
+        if (pass !== passFilter) return false;
+      }
+      return true;
+    });
+  }, [incidents, zoneFilter, passFilter, isCeoLike]);
 
   const selected = useMemo(
     () =>
@@ -124,8 +138,24 @@ export default function IncidentsPage() {
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">
-          {zoneOptions.length > 0 && (
-            <div className="flex-shrink-0 px-4 py-2 border-b border-border bg-card/40">
+          <div className="flex-shrink-0 px-4 py-2 border-b border-border bg-card/40 flex flex-wrap items-center gap-3">
+            {isCeoLike && (
+              <FilterSelect
+                label={t("incidents.passAll")}
+                value={passFilter}
+                size="sm"
+                onChange={(v) => {
+                  setPassFilter(v as PassFilter);
+                  setSelectedId(null);
+                }}
+                options={[
+                  { value: "checker", label: t("incidents.passChecker") },
+                  { value: "worker", label: t("incidents.passWorker") },
+                  { value: "ALL", label: t("incidents.passAll") },
+                ]}
+              />
+            )}
+            {zoneOptions.length > 0 && (
               <ZoneFilterBar
                 zones={zoneOptions}
                 value={zoneFilter}
@@ -134,8 +164,8 @@ export default function IncidentsPage() {
                   setSelectedId(null);
                 }}
               />
-            </div>
-          )}
+            )}
+          </div>
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
             <div className="flex-1 min-h-0 min-w-0">
               <IncidentsPanel

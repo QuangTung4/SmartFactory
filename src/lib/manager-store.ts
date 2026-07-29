@@ -22,6 +22,7 @@ export type TaskIncidentView = {
   sessionDate: string;
   incidentStatus: IncidentStatus;
   resolvedAt: string | null;
+  checkPass?: string | null;
 };
 
 export type ChatMessage = {

@@ -4,11 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* SmartFactory Control Room — tokens aligned with DESIGN.md */
+/* SmartFactory Control Room — Deep Navy Desk (DESIGN.md) */
 
 @layer base {
   :root {
-    --background: 210 20% 97%;
+    /* #EEF2F6 */
+    --background: 210 29% 95%;
     --foreground: 215 28% 17%;
 
     --card: 0 0% 100%;
@@ -17,19 +18,21 @@
     --popover: 0 0% 100%;
     --popover-foreground: 215 28% 17%;
 
-    /* Industrial blue #1E6091 */
-    --primary: 205 66% 34%;
+    /* Deep Navy #1E3A5F */
+    --primary: 214 52% 25%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 205 61% 44%;
+    /* #2A4A73 */
+    --primary-glow: 214 46% 31%;
 
-    --secondary: 205 16% 93%;
+    --secondary: 214 22% 92%;
     --secondary-foreground: 215 28% 17%;
 
-    --muted: 205 16% 93%;
+    --muted: 214 22% 92%;
     --muted-foreground: 215 14% 47%;
 
-    --accent: 205 55% 94%;
-    --accent-foreground: 205 66% 34%;
+    /* Soft navy tint #E8EEF4 */
+    --accent: 214 30% 93%;
+    --accent-foreground: 214 52% 25%;
 
     /* Pass green #28A745 */
     --success: 134 61% 41%;
@@ -46,9 +49,10 @@
     --warning-foreground: 40 55% 14%;
     --warning-soft: 48 100% 94%;
 
-    --border: 210 18% 87%;
-    --input: 210 18% 87%;
-    --ring: 205 66% 34%;
+    /* #D0D8E2 */
+    --border: 213 23% 85%;
+    --input: 213 23% 85%;
+    --ring: 214 52% 25%;
 
     --radius: 0.75rem;
 
@@ -56,53 +60,50 @@
     --status-draft: 48 100% 94%;
     --status-done: 134 45% 94%;
 
-    /* Chart series — same hex family as DESIGN.md chart-* */
     --chart-ok: 134 61% 41%;
     --chart-ng: 354 70% 54%;
     --chart-missing: 215 12% 60%;
 
-    --shadow-card: 0 2px 8px -2px hsl(215 28% 17% / 0.08), 0 1px 3px -1px hsl(215 28% 17% / 0.06);
-    --shadow-elevated: 0 8px 24px -8px hsl(215 28% 17% / 0.18);
-    --shadow-fab: 0 8px 20px -4px hsl(205 66% 34% / 0.45);
+    --shadow-card: 0 2px 8px -2px hsl(214 52% 25% / 0.08), 0 1px 3px -1px hsl(215 28% 17% / 0.06);
+    --shadow-elevated: 0 8px 24px -8px hsl(214 52% 25% / 0.18);
+    --shadow-fab: 0 8px 20px -4px hsl(214 52% 25% / 0.45);
 
     --header-h: 64px;
     --footer-h: 72px;
 
-    /* Sidebar aligned to industrial primary (not default slate) */
-    --sidebar-background: 210 25% 98%;
+    --sidebar-background: 214 28% 97%;
     --sidebar-foreground: 215 28% 17%;
-    --sidebar-primary: 205 66% 34%;
+    --sidebar-primary: 214 52% 25%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 205 55% 94%;
-    --sidebar-accent-foreground: 205 66% 34%;
-    --sidebar-border: 210 18% 87%;
-    --sidebar-ring: 205 66% 34%;
+    --sidebar-accent: 214 30% 93%;
+    --sidebar-accent-foreground: 214 52% 25%;
+    --sidebar-border: 213 23% 85%;
+    --sidebar-ring: 214 52% 25%;
   }
 
-  /* Control Room — dark mode (cùng bản sắc, nền mực công nghiệp) */
   .dark {
-    --background: 215 28% 9%;
+    --background: 215 32% 8%;
     --foreground: 210 20% 96%;
 
-    --card: 215 25% 12%;
+    --card: 215 28% 11%;
     --card-foreground: 210 20% 96%;
 
-    --popover: 215 25% 12%;
+    --popover: 215 28% 11%;
     --popover-foreground: 210 20% 96%;
 
-    /* Primary sáng hơn trên nền tối để đủ contrast */
-    --primary: 205 66% 48%;
+    /* #3B6EA5 — brighter navy on dark */
+    --primary: 210 47% 44%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 205 61% 58%;
+    --primary-glow: 210 47% 54%;
 
-    --secondary: 215 18% 16%;
+    --secondary: 215 20% 16%;
     --secondary-foreground: 210 20% 96%;
 
-    --muted: 215 18% 16%;
+    --muted: 215 20% 16%;
     --muted-foreground: 215 12% 68%;
 
-    --accent: 205 35% 18%;
-    --accent-foreground: 205 70% 78%;
+    --accent: 214 28% 18%;
+    --accent-foreground: 210 55% 78%;
 
     --success: 134 55% 48%;
     --success-foreground: 0 0% 100%;
@@ -118,9 +119,9 @@
 
     --border: 215 16% 22%;
     --input: 215 16% 22%;
-    --ring: 205 66% 48%;
+    --ring: 210 47% 44%;
 
-    --status-todo: 215 25% 12%;
+    --status-todo: 215 28% 11%;
     --status-draft: 45 50% 14%;
     --status-done: 134 35% 14%;
 
@@ -130,16 +131,16 @@
 
     --shadow-card: 0 2px 8px -2px hsl(0 0% 0% / 0.45), 0 1px 3px -1px hsl(0 0% 0% / 0.35);
     --shadow-elevated: 0 8px 24px -8px hsl(0 0% 0% / 0.55);
-    --shadow-fab: 0 8px 20px -4px hsl(205 66% 48% / 0.5);
+    --shadow-fab: 0 8px 20px -4px hsl(210 47% 44% / 0.5);
 
-    --sidebar-background: 215 28% 8%;
+    --sidebar-background: 215 32% 7%;
     --sidebar-foreground: 210 20% 96%;
-    --sidebar-primary: 205 66% 48%;
+    --sidebar-primary: 210 47% 44%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 205 35% 18%;
-    --sidebar-accent-foreground: 205 70% 78%;
+    --sidebar-accent: 214 28% 18%;
+    --sidebar-accent-foreground: 210 55% 78%;
     --sidebar-border: 215 16% 20%;
-    --sidebar-ring: 205 66% 48%;
+    --sidebar-ring: 210 47% 44%;
   }
 }
 

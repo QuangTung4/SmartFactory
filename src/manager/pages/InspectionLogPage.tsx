@@ -3,6 +3,7 @@ import { format, startOfDay } from "date-fns";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api, type ApiInspectionLogRow } from "@/lib/api";
+import { getSession } from "@/lib/auth-store";
 import { useLocale } from "@/i18n/LocaleContext";
 import { machineLabel, shiftLabel, translateContent, zoneLabel } from "@/i18n/contentLabels";
 import { DatePickerAside } from "../components/DatePickerAside";
@@ -23,8 +24,14 @@ export default function InspectionLogPage() {
   const dateStr = useMemo(() => format(anchor, "yyyy-MM-dd"), [anchor]);
 
   const load = useCallback(async () => {
+    const userId = getSession()?.userId;
+    if (!userId) {
+      setLoading(false);
+      setApiOk(false);
+      return;
+    }
     try {
-      const data = await api.managerInspectionLog(dateStr, dateStr);
+      const data = await api.managerInspectionLog(dateStr, dateStr, userId);
       setRows(data);
       setApiOk(true);
     } catch (err) {

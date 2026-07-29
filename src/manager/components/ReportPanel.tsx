@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ClipboardList, Clock, FileDown, Loader2 } from "lucide-react";
+import { ClipboardList, Clock, FileDown, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useLocale } from "@/i18n/LocaleContext";
 import { machineLabel, translateContent, zoneLabel } from "@/i18n/contentLabels";
-import type { ApiReportMachine, ApiReportMachinesResponse, ApiReportRangeResponse } from "@/lib/api";
+import { api, type ApiReportMachine, type ApiReportMachinesResponse, type ApiReportRangeResponse } from "@/lib/api";
+import { getSession } from "@/lib/auth-store";
 import { exportPeriodReportToPdf, exportReportToPdf } from "../lib/export-report-pdf";
 import { FilterSelect } from "./ZoneFilterBar";
 
@@ -60,6 +61,9 @@ export function ReportPanel({
 }: Props) {
   const { t, locale } = useLocale();
   const [exporting, setExporting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const session = getSession();
+  const canSendToCeo = session?.userType === "manager";
   const zoneMachines = (report?.machines ?? []).filter((m) => matchesZone(m, zoneFilter));
   const summary = report?.summary;
   const rangeSummary = rangeReport?.summary;
@@ -107,27 +111,94 @@ export function ReportPanel({
     { key: "all", label: t("report.filterAll"), count: filterCounts.total },
   ];
 
+  const buildPdf = async () => {
+    const statusMeta = filters.find((f) => f.key === filter);
+    const exportFilters = {
+      zoneFilter,
+      statusFilter: filter,
+      zoneLabelText:
+        zoneFilter === "ALL"
+          ? t("report.zoneAll")
+          : zoneLabel(zoneFilter, locale, zoneFilter),
+      statusLabelText: statusMeta?.label ?? filter,
+    };
+    if (isPeriodExport && rangeReport) {
+      return exportPeriodReportToPdf(rangeReport, {
+        periodLabel,
+        rangeHint: rangeHint || `${rangeReport.summary.from} → ${rangeReport.summary.to}`,
+        shiftLabel,
+        filters: exportFilters,
+      });
+    }
+    if (report) {
+      return exportReportToPdf(report, exportFilters);
+    }
+    throw new Error(t("report.pdf.fail"));
+  };
+
+  const libraryMeta = () => {
+    const dateFrom =
+      period === "day"
+        ? summary?.sessionDate
+        : rangeReport?.summary.from || summary?.sessionDate;
+    const dateTo =
+      period === "day"
+        ? summary?.sessionDate
+        : rangeReport?.summary.to || summary?.sessionDate;
+    const shiftCode =
+      period === "day"
+        ? summary?.shiftCode || undefined
+        : rangeReport?.summary.shift || undefined;
+    return {
+      periodKind: period,
+      periodLabel: period === "day" ? dateFrom || periodLabel : periodLabel,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      shiftCode: shiftCode || undefined,
+      zoneCodes: zoneFilter === "ALL" ? undefined : zoneFilter,
+    };
+  };
+
   const handleExportPdf = async () => {
     setExporting(true);
     try {
-      let filename: string;
-      if (isPeriodExport && rangeReport) {
-        filename = await exportPeriodReportToPdf(rangeReport, {
-          periodLabel,
-          rangeHint: rangeHint || `${rangeReport.summary.from} → ${rangeReport.summary.to}`,
-          shiftLabel,
-        });
-      } else if (report) {
-        filename = await exportReportToPdf(report);
-      } else {
-        throw new Error(t("report.pdf.fail"));
-      }
+      const { filename, blob } = await buildPdf();
       toast.success(t("report.pdf.success", { file: filename }));
+      const userId = session?.userId;
+      if (userId) {
+        try {
+          await api.saveReportDocument(userId, blob, {
+            fileName: filename,
+            direction: "exported",
+            ...libraryMeta(),
+          });
+        } catch (saveErr) {
+          console.warn("save library", saveErr);
+        }
+      }
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : t("report.pdf.fail"));
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleSendToCeo = async () => {
+    if (!session?.userId || !canSendToCeo) return;
+    setSending(true);
+    try {
+      const { filename, blob } = await buildPdf();
+      await api.sendReportToCeo(session.userId, blob, {
+        fileName: filename,
+        ...libraryMeta(),
+      });
+      toast.success(t("report.pdf.sentCeo"));
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : t("report.pdf.sendFail"));
+    } finally {
+      setSending(false);
     }
   };
 
@@ -138,6 +209,7 @@ export function ReportPanel({
         (rangeReport ? `${rangeReport.summary.from} → ${rangeReport.summary.to}` : summary?.sessionDate);
 
   const canExport = isPeriodExport ? !!rangeReport : !!report;
+  const busy = exporting || sending;
 
   return (
     <section className="flex flex-col min-h-0 h-full">
@@ -157,12 +229,29 @@ export function ReportPanel({
                 {t("report.deadline", { time: summary.formDeadlineTime })}
               </span>
             )}
+            {canSendToCeo && (
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                className="h-8"
+                disabled={!canExport || busy}
+                onClick={() => void handleSendToCeo()}
+              >
+                {sending ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {sending ? t("report.pdf.sending") : t("report.pdf.sendCeo")}
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
               variant="outline"
               className="h-8"
-              disabled={!canExport || exporting}
+              disabled={!canExport || busy}
               onClick={() => void handleExportPdf()}
             >
               {exporting ? (
@@ -201,6 +290,41 @@ export function ReportPanel({
 
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-1.5">
+          {period !== "day" && rangeReport?.byZone && rangeReport.byZone.length > 0 && (
+            <div className="rounded-xl border border-border bg-card p-3 mb-2 shadow-card">
+              <div className="text-sm font-semibold mb-0.5">{t("report.paretoTitle")}</div>
+              <p className="text-[11px] text-muted-foreground mb-3">{t("report.paretoHint")}</p>
+              <div className="space-y-2">
+                {[...rangeReport.byZone]
+                  .sort((a, b) => (b.ng || 0) - (a.ng || 0))
+                  .map((z) => {
+                    const maxNg = Math.max(
+                      1,
+                      ...rangeReport.byZone.map((x) => Number(x.ng) || 0)
+                    );
+                    const pct = ((Number(z.ng) || 0) / maxNg) * 100;
+                    return (
+                      <div key={z.zoneCode || z.zoneName} className="space-y-1">
+                        <div className="flex justify-between text-[11px] gap-2">
+                          <span className="font-medium truncate">
+                            {zoneLabel(z.zoneCode, locale, z.zoneName)}
+                          </span>
+                          <span className="tabular-nums text-destructive font-semibold">
+                            NG {z.ng}
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-destructive transition-all duration-300"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
           {period !== "day" && rangeReport ? (
             rangeReport.byDay.length === 0 ? (
               <div className="text-sm text-muted-foreground p-6 text-center">

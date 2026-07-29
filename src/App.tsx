@@ -7,9 +7,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { LocaleProvider } from "@/i18n/LocaleContext";
 import { RequireAuth } from "./components/RequireAuth.tsx";
 import ManagerLayout from "./manager/ManagerLayout.tsx";
+import ComingSoonPage from "./manager/pages/ComingSoonPage.tsx";
 import DashboardPage from "./manager/pages/DashboardPage.tsx";
 import IncidentsPage from "./manager/pages/IncidentsPage.tsx";
 import InspectionLogPage from "./manager/pages/InspectionLogPage.tsx";
+import KanbanPage from "./manager/pages/KanbanPage.tsx";
+import ReportLibraryPage from "./manager/pages/ReportLibraryPage.tsx";
 import ReportsPage from "./manager/pages/ReportsPage.tsx";
 import LoginPage from "./pages/LoginPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -41,9 +44,16 @@ const App = () => (
                 }
               >
                 <Route index element={<DashboardPage />} />
+                <Route path="devices" element={<ComingSoonPage titleKey="nav.devices" />} />
+                <Route path="inspections" element={<ComingSoonPage titleKey="nav.inspections" />} />
+                <Route path="maintenance" element={<ComingSoonPage titleKey="nav.maintenance" />} />
                 <Route path="reports" element={<ReportsPage />} />
+                <Route path="library" element={<ReportLibraryPage />} />
                 <Route path="incidents" element={<IncidentsPage />} />
+                <Route path="kanban" element={<KanbanPage />} />
                 <Route path="inspection-log" element={<InspectionLogPage />} />
+                <Route path="users" element={<ComingSoonPage titleKey="nav.users" />} />
+                <Route path="parts" element={<ComingSoonPage titleKey="nav.parts" />} />
               </Route>
 
               <Route path="/tablet" element={<Navigate to="/login" replace />} />

@@ -228,6 +228,8 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   const [open, setOpen] = useState(false);
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
   const [listTab, setListTab] = useState<"incident" | "direct">("incident");
+  /** CEO: action=checker queue (default); watch=worker read-only; all=both */
+  const [passQueue, setPassQueue] = useState<"action" | "watch" | "all">("action");
   const [query, setQuery] = useState("");
   const [zoneFilter, setZoneFilter] = useState<string | "ALL">("ALL");
   const [zones, setZones] = useState<ZoneOption[]>([]);
@@ -667,17 +669,29 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     socketOk,
   ]);
 
+  const isCeoLike =
+    session?.userType === "ceo" || session?.userType === "admin";
+
+  const badgeConversations = useMemo(() => {
+    if (!isCeoLike) return conversations;
+    return conversations.filter((c) => {
+      const kind = String(c.conversationKind || "incident").toLowerCase();
+      if (kind === "direct") return true;
+      return String(c.checkPass || "worker").toLowerCase() === "checker";
+    });
+  }, [conversations, isCeoLike]);
+
   const unreadTotal = useMemo(
-    () => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
-    [conversations]
+    () => badgeConversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+    [badgeConversations]
   );
 
   const openCount = useMemo(
     () =>
-      conversations.filter(
+      badgeConversations.filter(
         (c) => c.isOpen === true || (c.isActive && c.incidentStatus !== "resolved")
       ).length,
-    [conversations]
+    [badgeConversations]
   );
 
   useEffect(() => {
@@ -707,6 +721,11 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
     return conversations.filter((c) => {
       const kind = String(c.conversationKind || "incident").toLowerCase();
       if (listTab === "direct" ? kind !== "direct" : kind === "direct") return false;
+      if (listTab === "incident" && isCeoLike) {
+        const pass = String(c.checkPass || "worker").toLowerCase();
+        if (passQueue === "action" && pass !== "checker") return false;
+        if (passQueue === "watch" && pass !== "worker") return false;
+      }
       if (
         listTab === "incident" &&
         zoneFilter !== "ALL" &&
@@ -731,7 +750,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [conversations, query, zoneFilter, listTab]);
+  }, [conversations, query, zoneFilter, listTab, isCeoLike, passQueue]);
 
   const active = useMemo(
     () => conversations.find((c) => c.conversationId === activeConversationId) || null,
@@ -911,9 +930,9 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
   };
 
   const onResolve = async () => {
-    if (!activeIncidentId || chatLocked || isDirect) return;
+    if (!activeIncidentId || chatLocked || isDirect || !canWriteActive || !session?.userId) return;
     try {
-      await api.resolveIncident(activeIncidentId);
+      await api.resolveIncident(activeIncidentId, session.userId);
       toast.success(t("toast.resolved"));
       await loadConversations();
       if (activeConversationId) await loadMessages(activeConversationId);
@@ -1087,6 +1106,31 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                     {t("chat.tabDirect")}
                   </button>
                 </div>
+                {listTab === "incident" && isCeoLike && (
+                  <div className="flex gap-1">
+                    {(
+                      [
+                        ["action", "chat.queueAction"],
+                        ["watch", "chat.queueWatch"],
+                        ["all", "chat.queueAll"],
+                      ] as const
+                    ).map(([key, labelKey]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setPassQueue(key)}
+                        className={cn(
+                          "flex-1 text-[10px] font-semibold py-1 rounded-md border",
+                          passQueue === key
+                            ? "bg-primary/10 text-primary border-primary/30"
+                            : "bg-background text-muted-foreground border-border"
+                        )}
+                      >
+                        {t(labelKey)}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {listTab === "incident" && zoneOptions.length > 0 && (
                   <ZoneFilterBar
                     zones={zoneOptions}
@@ -1273,7 +1317,7 @@ export function ChatBubbleDock({ focusIncidentId, onFocusConsumed, onResolved }:
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={chatLocked || !activeIncidentId}
+                    disabled={chatLocked || !activeIncidentId || !canWriteActive}
                     onClick={() => void onResolve()}
                     className="h-7 text-xs"
                   >
